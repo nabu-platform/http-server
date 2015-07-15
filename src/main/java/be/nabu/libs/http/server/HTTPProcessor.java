@@ -4,6 +4,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.Charset;
+import java.security.cert.Certificate;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,12 +41,12 @@ public class HTTPProcessor {
 		this.eventDispatcher = eventDispatcher;
 	}
 	
-	public HTTPResponse process(SSLContext context, HTTPRequest request, String remoteHost, int remotePort) throws FormatException {
+	public HTTPResponse process(SSLContext context, Certificate[] peerCertificates, HTTPRequest request, String remoteHost, int remotePort) throws FormatException {
 		if (request.getContent() != null) {
 			if (MimeUtils.getHeader(ServerHeader.REQUEST_SECURITY.getName(), request.getContent().getHeaders()) != null) {
 				throw new HTTPException(400, "Header not allowed: " + ServerHeader.REQUEST_SECURITY.getName());
 			}
-			request.getContent().setHeader(new SimpleSecurityHeader(context));
+			request.getContent().setHeader(new SimpleSecurityHeader(context, peerCertificates));
 			HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteHost);
 			HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(remotePort).toString());
 		}

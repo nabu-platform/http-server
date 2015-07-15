@@ -130,7 +130,7 @@ public class DefaultHTTPServer implements HTTPServer {
 								if (request.getContent() != null) {
 									keepAlive = HTTPUtils.keepAlive(request);
 								}
-								HTTPResponse response = processor.process(sslContext, request, socket.getInetAddress().getHostName(), socket.getPort());
+								HTTPResponse response = processor.process(sslContext, null, request, socket.getInetAddress().getHostName(), socket.getPort());
 								if (keepAlive && response.getContent() != null) {
 									keepAlive = HTTPUtils.keepAlive(response);
 								}

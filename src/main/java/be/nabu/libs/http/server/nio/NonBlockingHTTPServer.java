@@ -40,6 +40,7 @@ import be.nabu.utils.io.api.Container;
 import be.nabu.utils.io.api.PushbackContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.containers.bytes.SSLSocketByteContainer;
 import be.nabu.utils.io.containers.bytes.SocketByteContainer;
 import be.nabu.utils.mime.api.ContentPart;
 import be.nabu.utils.mime.impl.FormatException;
@@ -210,9 +211,11 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		private Queue<HTTPRequest> queue = new ArrayDeque<HTTPRequest>();
 		private boolean isScheduled = false;
 		private boolean isClosed;
+		private RequestProcessor requestProcessor;
 
-		public ResponseProcessor(SocketChannel clientChannel, WritableContainer<ByteBuffer> writable) {
+		public ResponseProcessor(RequestProcessor requestProcessor, SocketChannel clientChannel, WritableContainer<ByteBuffer> writable) {
 			super(clientChannel);
+			this.requestProcessor = requestProcessor;
 			this.writable = writable;
 		}
 		
@@ -235,7 +238,13 @@ public class NonBlockingHTTPServer implements HTTPServer {
 							if (request.getContent() != null) {
 								keepAlive = HTTPUtils.keepAlive(request);
 							}
-							HTTPResponse response = processor.process(sslContext, request, getChannel().socket().getInetAddress().getHostName(), getChannel().socket().getPort());
+							HTTPResponse response = processor.process(
+								sslContext, 
+								requestProcessor.sslContainer == null ? null : requestProcessor.sslContainer.getPeerCertificates(), 
+								request, 
+								getChannel().socket().getInetAddress().getHostName(),
+								getChannel().socket().getPort()
+							);
 							if (keepAlive && response.getContent() != null) {
 								keepAlive = HTTPUtils.keepAlive(response);
 							}
@@ -318,16 +327,17 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		private HTTPMessageFramer framer;
 		private ResponseProcessor responseProcessor;
 		private boolean hasRead = true;
+		private SSLSocketByteContainer sslContainer;
 
-		@SuppressWarnings("resource")
 		public RequestProcessor(SocketChannel clientChannel) throws SSLException {
 			super(clientChannel);
 			Container<ByteBuffer> wrap = new SocketByteContainer(clientChannel);
 			if (sslContext != null) {
-				wrap = IOUtils.secure(wrap, sslContext, serverMode);
+				sslContainer = new SSLSocketByteContainer(wrap, sslContext, serverMode);
+				wrap = sslContainer;
 			}
 			this.readable = IOUtils.pushback(IOUtils.bufferReadable(wrap, IOUtils.newByteBuffer(BUFFER_SIZE, true)));
-			this.responseProcessor = new ResponseProcessor(clientChannel, IOUtils.bufferWritable(wrap, IOUtils.newByteBuffer(BUFFER_SIZE, true)));
+			this.responseProcessor = new ResponseProcessor(this, clientChannel, IOUtils.bufferWritable(wrap, IOUtils.newByteBuffer(BUFFER_SIZE, true)));
 		}
 
 		public void schedule() {
