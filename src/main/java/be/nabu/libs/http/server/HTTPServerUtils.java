@@ -7,6 +7,7 @@ import javax.net.ssl.SSLContext;
 
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventHandler;
+import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
@@ -53,34 +54,37 @@ public class HTTPServerUtils {
 		return new RequestPathRewriter(regex, replacement);
 	}
 	
-	public static void handleDefaultPage(HTTPServer server, String defaultPage) {
-		server.getEventDispatcher().subscribe(HTTPRequest.class, defaultPageHandler(defaultPage));
+	public static EventSubscription<HTTPRequest, HTTPRequest> handleDefaultPage(HTTPServer server, String defaultPage) {
+		return server.getEventDispatcher().subscribe(HTTPRequest.class, defaultPageHandler(defaultPage));
 	}
 	
-	public static void rewrite(HTTPServer server, String regex, String replacement) {
-		server.getEventDispatcher().subscribe(HTTPRequest.class, rewriteHandler(regex, replacement))
-			.filter(filterPath(regex, true));
+	public static EventSubscription<HTTPRequest, HTTPRequest> rewrite(HTTPServer server, String regex, String replacement) {
+		EventSubscription<HTTPRequest, HTTPRequest> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, rewriteHandler(regex, replacement));
+		subscription.filter(filterPath(regex, true));
+		return subscription;
 	}
 	
-	public static void handleResources(HTTPServer server, ResourceContainer<?> root, String serverPath) {
-		server.getEventDispatcher().subscribe(HTTPRequest.class, resourceHandler(root, serverPath))
-			.filter(filterPath(serverPath, false));
+	public static EventSubscription<HTTPRequest, HTTPResponse> handleResources(HTTPServer server, ResourceContainer<?> root, String serverPath) {
+		EventSubscription<HTTPRequest, HTTPResponse> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, resourceHandler(root, serverPath));
+		subscription.filter(filterPath(serverPath, false));
+		return subscription;
 	}
 	
-	public static void handleResources(HTTPServer server, URI uri, String serverPath) throws IOException {
-		handleResources(server, (ResourceContainer<?>) ResourceFactory.getInstance().resolve(uri, null), serverPath);
+	public static EventSubscription<HTTPRequest, HTTPResponse> handleResources(HTTPServer server, URI uri, String serverPath) throws IOException {
+		return handleResources(server, (ResourceContainer<?>) ResourceFactory.getInstance().resolve(uri, null), serverPath);
 	}
 	
-	public static void verifyAbsenceOfHeaders(HTTPServer server, String...headers) {
-		server.getEventDispatcher().subscribe(HTTPRequest.class, new AbsenceOfHeadersValidator(false, headers));
+	public static EventSubscription<HTTPRequest, HTTPResponse> verifyAbsenceOfHeaders(HTTPServer server, String...headers) {
+		return server.getEventDispatcher().subscribe(HTTPRequest.class, new AbsenceOfHeadersValidator(false, headers));
 	}
 	
-	public static void requireAuthentication(HTTPServer server, String path, String challenge) {
-		server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(challenge))
-			.filter(filterPath(path, false));
+	public static EventSubscription<HTTPRequest, HTTPResponse> requireAuthentication(HTTPServer server, String path, String challenge) {
+		EventSubscription<HTTPRequest, HTTPResponse> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(challenge));
+		subscription.filter(filterPath(path, false));
+		return subscription;
 	}
 	
-	public static void requireBasicAuthentication(HTTPServer server, String path, String realm) {
-		requireAuthentication(server, path, "Basic realm=\"" + realm + "\"");
+	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, String path, String realm) {
+		return requireAuthentication(server, path, "Basic realm=\"" + realm + "\"");
 	}
 }
