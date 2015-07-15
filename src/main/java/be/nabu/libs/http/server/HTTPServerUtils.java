@@ -71,4 +71,16 @@ public class HTTPServerUtils {
 		handleResources(server, (ResourceContainer<?>) ResourceFactory.getInstance().resolve(uri, null), serverPath);
 	}
 	
+	public static void verifyAbsenceOfHeaders(HTTPServer server, String...headers) {
+		server.getEventDispatcher().subscribe(HTTPRequest.class, new AbsenceOfHeadersValidator(false, headers));
+	}
+	
+	public static void requireAuthentication(HTTPServer server, String path, String challenge) {
+		server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(challenge))
+			.filter(filterPath(path, false));
+	}
+	
+	public static void requireBasicAuthentication(HTTPServer server, String path, String realm) {
+		requireAuthentication(server, path, "Basic realm=\"" + realm + "\"");
+	}
 }

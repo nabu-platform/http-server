@@ -2,13 +2,15 @@ package be.nabu.libs.http.server;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.Principal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import be.nabu.libs.http.api.server.PasswordAuthenticator;
+import be.nabu.libs.http.api.BasicPrincipal;
+import be.nabu.libs.http.api.server.ServerAuthenticationHandler;
 
-abstract public class BasePasswordHandler implements PasswordAuthenticator {
+abstract public class BasePasswordHandler implements ServerAuthenticationHandler {
 	
 	private Map<String, Properties> realms = new HashMap<String, Properties>();
 	
@@ -19,9 +21,10 @@ abstract public class BasePasswordHandler implements PasswordAuthenticator {
 	}
 
 	@Override
-	public boolean isValid(String realm, String username, String password) {
-		return getRealm(realm).containsKey(username)
-			&& getRealm(realm).get(username).equals(password);
+	public String authenticate(String realm, Principal principal) {
+		return getRealm(realm).containsKey(principal.getName()) && getRealm(realm).get(principal.getName()).equals(((BasicPrincipal) principal).getPassword())
+			? realm + "." + principal.getName()
+			: null;
 	}
 	
 	abstract protected InputStream getInput(String fileName) throws IOException;

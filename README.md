@@ -9,6 +9,8 @@ For example, suppose you want a new nio server instance with some html/js/css st
 ```java
 // create a new server instance
 HTTPServer server = HTTPServerUtils.newNonBlocking(port, 20, new EventDispatcherImpl());
+// make sure internal headers can not be provided by client
+HTTPServerUtils.verifyAbsenceOfHeaders(server);
 // make sure there is a default page
 HTTPServerUtils.handleDefaultPage(server, "index.html");
 // handle the resources like css, javascript,...

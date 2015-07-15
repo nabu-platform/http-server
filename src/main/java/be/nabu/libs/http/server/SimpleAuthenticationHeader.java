@@ -8,14 +8,16 @@ import be.nabu.libs.http.core.ServerHeader;
 public class SimpleAuthenticationHeader implements AuthenticationHeader {
 
 	private Principal principal;
+	private String userId;
 
-	public SimpleAuthenticationHeader(Principal principal) {
+	public SimpleAuthenticationHeader(String userId, Principal principal) {
+		this.userId = userId;
 		this.principal = principal;
 	}
 	
 	@Override
 	public String getName() {
-		return ServerHeader.NAME_REMOTE_USER;
+		return ServerHeader.REMOTE_USER.getName();
 	}
 
 	@Override
@@ -32,4 +34,7 @@ public class SimpleAuthenticationHeader implements AuthenticationHeader {
 		return principal;
 	}
 
+	public String getUserId() {
+		return userId;
+	}
 }
