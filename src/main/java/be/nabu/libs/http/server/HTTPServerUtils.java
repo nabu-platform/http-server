@@ -11,6 +11,8 @@ import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
+import be.nabu.libs.http.api.server.RealmHandler;
+import be.nabu.libs.http.api.server.ServerAuthenticationHandler;
 import be.nabu.libs.http.server.io.DefaultHTTPServer;
 import be.nabu.libs.http.server.nio.NonBlockingHTTPServer;
 import be.nabu.libs.resources.ResourceFactory;
@@ -78,13 +80,11 @@ public class HTTPServerUtils {
 		return server.getEventDispatcher().subscribe(HTTPRequest.class, new AbsenceOfHeadersValidator(false, headers));
 	}
 	
-	public static EventSubscription<HTTPRequest, HTTPResponse> requireAuthentication(HTTPServer server, String path, String challenge) {
-		EventSubscription<HTTPRequest, HTTPResponse> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(challenge));
-		subscription.filter(filterPath(path, false));
-		return subscription;
+	public static EventSubscription<HTTPRequest, HTTPResponse> requireAuthentication(HTTPServer server) {
+		return server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(null));
 	}
 	
-	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, String path, String realm) {
-		return requireAuthentication(server, path, "Basic realm=\"" + realm + "\"");
+	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, ServerAuthenticationHandler handler, RealmHandler realmHandler) {
+		return server.getEventDispatcher().subscribe(HTTPRequest.class, new BasicAuthenticationHandler(handler, realmHandler));
 	}
 }

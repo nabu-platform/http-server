@@ -10,13 +10,16 @@ import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.RealmHandler;
 import be.nabu.libs.http.api.server.ServerAuthenticationHandler;
+import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
 import be.nabu.utils.codec.TranscoderUtils;
 import be.nabu.utils.codec.impl.Base64Decoder;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.mime.api.Header;
+import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.MimeUtils;
+import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 
 /**
  * It currently has no state so the client has to authenticate on every call
@@ -57,6 +60,7 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 					String userId = authenticator.authenticate(realm, principal);
 					if (userId != null) {
 						request.getContent().setHeader(new SimpleAuthenticationHeader(userId, principal));
+						return null;
 					}
 				}
 				catch (IOException e) {
@@ -64,7 +68,10 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 				}
 			}
 		}
-		return null;
+		return new DefaultHTTPResponse(401, "Unauthorized", new PlainMimeEmptyPart(null, 
+			new MimeHeader("Content-Length", "0"),
+			new MimeHeader("WWW-Authenticate", "Basic realm=\"" + realm + "\"")
+		));
 	}
 	
 	private static class BasicPrincipalImpl implements BasicPrincipal {
