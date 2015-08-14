@@ -5,9 +5,15 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Arrays;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.api.server.MessageFramer;
+import be.nabu.libs.http.core.HTTPUtils;
+import be.nabu.libs.http.core.ServerHeader;
+import be.nabu.libs.resources.api.LocatableResource;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.WritableResource;
@@ -33,6 +39,8 @@ import be.nabu.utils.mime.util.ChunkedReadableByteContainer;
 public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 
 	public static final int COPY_SIZE = 4096;
+	
+	private Logger logger = LoggerFactory.getLogger(getClass());
 	
 	private DynamicByteBuffer initialBuffer;
 	private Header [] headers;
@@ -87,6 +95,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				method = request.substring(0, firstSpaceIndex);
 				target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
 				version = new Double(request.substring(httpIndex).replaceFirst("HTTP/", "").trim());
+				logger.debug("Request: {}", request);
 			}
 		}
 		if (request != null && headers == null && !isDone()) {
@@ -113,6 +122,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					}
 					else if (headers != null) {
 						initialBuffer.unmark();
+						logger.trace("Headers: {}", Arrays.asList(headers));
 					}
 				}
 			}
@@ -153,7 +163,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				writable = ((WritableResource) resource).getWritable();
 			}
 			long read = 0;
-			while (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0) {
+			while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
 				totalRead += initialBuffer.remainingData();
 				if (chunked != null) {
 					long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
@@ -198,9 +208,15 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				// don't take anything into account that is not processed
 				totalRead -= initialBuffer.remainingData();
 			}
+			if (isDone() && initialBuffer.remainingData() > 0) {
+				content.pushback(initialBuffer);
+			}
 			if (read == -1) {
 				isClosed = true;
 			}
+		}
+		if (part != null && resource instanceof LocatableResource) {
+			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getURI().toString());
 		}
 	}
 	
