@@ -3,6 +3,7 @@ package be.nabu.libs.http.server.nio;
 import java.io.Closeable;
 import java.io.IOException;
 import java.text.ParseException;
+import java.util.Arrays;
 
 import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.server.MessageDataProvider;
@@ -18,6 +19,7 @@ import be.nabu.utils.io.api.PushbackContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
 import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
+import be.nabu.utils.io.buffers.bytes.CyclicByteBuffer;
 import be.nabu.utils.io.buffers.bytes.DynamicByteBuffer;
 import be.nabu.utils.io.containers.chars.ReadableStraightByteToCharContainer;
 import be.nabu.utils.mime.api.Header;
@@ -30,7 +32,9 @@ import be.nabu.utils.mime.util.ChunkedReadableByteContainer;
 
 public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 
-	private DynamicByteBuffer initialBuffer, chunkBuffer;
+	public static final int COPY_SIZE = 4096;
+	
+	private DynamicByteBuffer initialBuffer;
 	private Header [] headers;
 	private MessageDataProvider dataProvider;
 	private Resource resource;
@@ -38,9 +42,10 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 	private ChunkedReadableByteContainer chunked;
 	private ModifiablePart part;
 	private byte [] single = new byte[1];
+	private ByteBuffer copyBuffer = new CyclicByteBuffer(COPY_SIZE);
 	
 	private String request;
-	private long totalRead;
+	private long totalRead, totalChunkRead;
 	private int maxInitialLineLength = 4096;
 	private int maxHeaderSize = 8192;
 	private int maxChunkSize = 8192;
@@ -132,7 +137,6 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					}
 					chunked = new ChunkedReadableByteContainer(initialBuffer);
 					chunked.setMaxChunkSize(maxChunkSize);
-					chunkBuffer = new DynamicByteBuffer();
 				}
 				else if (contentLength == 0) {
 					isDone = true;
@@ -142,25 +146,23 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				}
 				resource = getDataProvider().newResource(request, headers);
 				if (resource == null) {
-					throw new UnknownFrameException("No data provider available for contentLength: " + contentLength);
+					throw new UnknownFrameException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers));
 				}
 			}
 			if (writable == null) {
 				writable = ((WritableResource) resource).getWritable();
 			}
-			long read = content.read(contentLength == null ? initialBuffer : ByteBufferFactory.getInstance().limit(initialBuffer, null, contentLength - initialBuffer.remainingData()));
-			if (read == -1) {
-				isClosed = true;
-			}
-			if (contentLength == null || totalRead < contentLength) {
+			long read = 0;
+			while (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0) {
+				totalRead += initialBuffer.remainingData();
 				if (chunked != null) {
+					long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
 					// if the chunk is done, stop
-					long chunkRead = chunked.read(chunkBuffer);
 					if (chunkRead == -1) {
 						// switch the transfer encoding with a length header
 						for (int i = 0; i < headers.length; i++) {
 							if (headers[i].getName().equalsIgnoreCase("Transfer-Encoding")) {
-								headers[i] = new MimeHeader("Content-Length", "" + totalRead);
+								headers[i] = new MimeHeader("Content-Length", "" + totalChunkRead);
 								break;
 							}
 						}
@@ -174,14 +176,10 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 						}
 					}
 					else {
-						totalRead += chunkBuffer.remainingData();
-						if (chunkBuffer.remainingData() != writable.write(chunkBuffer)) {
-							throw new IOException("The backing resource does not have enough space for the chunked stream");	
-						}
+						totalChunkRead += chunkRead;
 					}
 				}
 				else {
-					totalRead += initialBuffer.remainingData();
 					if (initialBuffer.remainingData() != writable.write(initialBuffer)) {
 						throw new IOException("The backing resource does not have enough space");
 					}
@@ -197,6 +195,11 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 						}
 					}
 				}
+				// don't take anything into account that is not processed
+				totalRead -= initialBuffer.remainingData();
+			}
+			if (read == -1) {
+				isClosed = true;
 			}
 		}
 	}
