@@ -29,6 +29,7 @@ import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
+import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.DefaultHTTPRequest;
 import be.nabu.libs.http.core.HTTPFormatter;
 import be.nabu.libs.http.core.HTTPUtils;
@@ -59,6 +60,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
     private static String CHANNEL_TYPE = "channelType";
     private ServerSocketChannel channel;
     private HTTPProcessor processor;
+    private MessageDataProvider dataProvider;
 
 	private Map<SocketChannel, RequestProcessor> requestProcessors = new HashMap<SocketChannel, RequestProcessor>();
 	private SSLServerMode serverMode;
@@ -359,7 +361,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 				try {
 					synchronized(this) {
 						if (framer == null) {
-							framer = new HTTPMessageFramer();
+							framer = new HTTPMessageFramer(dataProvider);
 						}
 						try {
 							framer.push(readable);
@@ -425,4 +427,13 @@ public class NonBlockingHTTPServer implements HTTPServer {
 			return object instanceof RequestProcessor && ((RequestProcessor) object).getChannel().equals(getChannel());
 		}
 	}
+
+	public MessageDataProvider getDataProvider() {
+		return dataProvider;
+	}
+
+	public void setDataProvider(MessageDataProvider dataProvider) {
+		this.dataProvider = dataProvider;
+	}
+	
 }

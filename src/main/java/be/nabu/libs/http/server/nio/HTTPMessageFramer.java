@@ -52,9 +52,10 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 	private boolean isClosed;
 	private boolean isDone;
 	
-	public HTTPMessageFramer() {
-		 initialBuffer = new DynamicByteBuffer();
-		 initialBuffer.mark();
+	public HTTPMessageFramer(MessageDataProvider dataProvider) {
+		this.dataProvider = dataProvider;
+		initialBuffer = new DynamicByteBuffer();
+		initialBuffer.mark();
 	}
 	
 	@Override
@@ -139,7 +140,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					content.pushback(initialBuffer);
 					return;
 				}
-				resource = getDataProvider().newResource(contentLength);
+				resource = getDataProvider().newResource(request, headers);
 				if (resource == null) {
 					throw new UnknownFrameException("No data provider available for contentLength: " + contentLength);
 				}
@@ -254,9 +255,5 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 			dataProvider = new MemoryMessageDataProvider();
 		}
 		return dataProvider;
-	}
-
-	public void setDataProvider(MessageDataProvider dataProvider) {
-		this.dataProvider = dataProvider;
 	}
 }
