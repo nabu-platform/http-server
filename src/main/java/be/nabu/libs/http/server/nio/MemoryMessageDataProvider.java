@@ -10,7 +10,7 @@ public class MemoryMessageDataProvider implements MessageDataProvider {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public <T extends WritableResource & ReadableResource> T newResource(String request, Header...headers) {
+	public <T extends WritableResource & ReadableResource> T newResource(String method, String target, double version, Header...headers) {
 		return (T) new MemoryItem("tmp");
 	}
 

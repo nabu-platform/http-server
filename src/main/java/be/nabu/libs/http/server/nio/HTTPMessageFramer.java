@@ -65,6 +65,12 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 	private boolean isClosed;
 	private boolean isDone;
 	
+	/**
+	 * When writing to the backend, do we want to include the request?
+	 * Depending on whether we want pure mime or an actual http request this can differ
+	 */
+	private boolean includeRequest;
+	
 	public HTTPMessageFramer(MessageDataProvider dataProvider) {
 		this.dataProvider = dataProvider;
 		initialBuffer = new DynamicByteBuffer();
@@ -154,13 +160,23 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					content.pushback(initialBuffer);
 					return;
 				}
-				resource = getDataProvider().newResource(request, headers);
+				resource = getDataProvider().newResource(method, target, version, headers);
 				if (resource == null) {
 					throw new UnknownFrameException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers));
 				}
 			}
 			if (writable == null) {
 				writable = ((WritableResource) resource).getWritable();
+				// write the data we have so far
+				if (includeRequest) {
+					writable.write(IOUtils.wrap(request.getBytes("ASCII"), true));
+					writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
+				}
+				for (Header header : headers) {
+					writable.write(IOUtils.wrap(header.toString().getBytes("ASCII"), true));
+					writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
+				}
+				writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
 			}
 			long read = 0;
 			while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
