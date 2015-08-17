@@ -168,7 +168,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				if (chunked != null) {
 					long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
 					// if the chunk is done, stop
-					if (chunkRead == -1) {
+					if (chunked.isFinished()) {
 						// switch the transfer encoding with a length header
 						for (int i = 0; i < headers.length; i++) {
 							if (headers[i].getName().equalsIgnoreCase("Transfer-Encoding")) {
