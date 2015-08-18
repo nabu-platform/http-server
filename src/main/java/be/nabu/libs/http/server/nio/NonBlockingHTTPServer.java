@@ -29,8 +29,8 @@ import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
-import be.nabu.libs.http.api.server.MessageDataProvider;
-import be.nabu.libs.http.core.DefaultHTTPRequest;
+import be.nabu.libs.http.api.server.MessageFramer;
+import be.nabu.libs.http.api.server.MessageFramerFactory;
 import be.nabu.libs.http.core.HTTPFormatter;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.server.HTTPProcessor;
@@ -60,7 +60,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
     private static String CHANNEL_TYPE = "channelType";
     private ServerSocketChannel channel;
     private HTTPProcessor processor;
-    private MessageDataProvider dataProvider;
+    private MessageFramerFactory<HTTPRequest> framerFactory;
 
 	private Map<SocketChannel, RequestProcessor> requestProcessors = new HashMap<SocketChannel, RequestProcessor>();
 	private SSLServerMode serverMode;
@@ -326,7 +326,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	public class RequestProcessor extends SocketChannelProcessor {
 		
 		private PushbackContainer<ByteBuffer> readable;
-		private HTTPMessageFramer framer;
+		private MessageFramer<HTTPRequest> framer;
 		private ResponseProcessor responseProcessor;
 		private boolean hasRead = true;
 		private SSLSocketByteContainer sslContainer;
@@ -361,7 +361,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 				try {
 					synchronized(this) {
 						if (framer == null) {
-							framer = new HTTPMessageFramer(dataProvider);
+							framer = getFramerFactory().newFramer();
 						}
 						try {
 							framer.push(readable);
@@ -379,7 +379,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 						}
 						hasRead = true;
 						if (framer.isDone()) {
-							request = new DefaultHTTPRequest(framer.getMethod(), framer.getTarget(), framer.getMessage());
+							request = framer.getMessage();
 							framer = null;
 						}
 						else if (framer.isClosed()) {
@@ -387,6 +387,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 						}
 					}
 					if (request != null) {
+						logger.trace("Parsed request {}", request);
 						responseProcessor.push(request);
 					}
 				}
@@ -428,12 +429,14 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		}
 	}
 
-	public MessageDataProvider getDataProvider() {
-		return dataProvider;
+	public MessageFramerFactory<HTTPRequest> getFramerFactory() {
+		if (framerFactory == null) {
+			framerFactory = new HTTPRequestFramerFactory(new MemoryMessageDataProvider());
+		}
+		return framerFactory;
 	}
 
-	public void setDataProvider(MessageDataProvider dataProvider) {
-		this.dataProvider = dataProvider;
+	public void setFramerFactory(MessageFramerFactory<HTTPRequest> framerFactory) {
+		this.framerFactory = framerFactory;
 	}
-	
 }
