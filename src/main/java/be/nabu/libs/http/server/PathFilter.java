@@ -8,15 +8,16 @@ import be.nabu.utils.mime.impl.FormatException;
 public class PathFilter implements EventHandler<HTTPRequest, Boolean> {
 
 	private String path;
-	private boolean isRegex;
+	private boolean isRegex, whitelist;
 
 	public PathFilter(String path) {
-		this(path, false);
+		this(path, false, true);
 	}
 	
-	public PathFilter(String path, boolean isRegex) {
+	public PathFilter(String path, boolean isRegex, boolean whitelist) {
 		this.path = path;
 		this.isRegex = isRegex;
+		this.whitelist = whitelist;
 		// make sure it is absolute
 		if (!isRegex && !this.path.startsWith("/")) {
 			this.path = "/" + this.path;
@@ -26,9 +27,16 @@ public class PathFilter implements EventHandler<HTTPRequest, Boolean> {
 	@Override
 	public Boolean handle(HTTPRequest request) {
 		try {
-			return isRegex
-				? !HTTPUtils.getURI(request, false).getPath().matches(path)
-				: !HTTPUtils.getURI(request, false).getPath().startsWith(path);
+			if (whitelist) {
+				return isRegex
+					? !HTTPUtils.getURI(request, false).getPath().matches(path)
+					: !HTTPUtils.getURI(request, false).getPath().startsWith(path);
+			}
+			else {
+				return isRegex
+					? HTTPUtils.getURI(request, false).getPath().matches(path)
+					: HTTPUtils.getURI(request, false).getPath().startsWith(path);
+			}
 		}
 		catch (FormatException e) {
 			return false;

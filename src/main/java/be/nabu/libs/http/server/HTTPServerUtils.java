@@ -38,7 +38,15 @@ public class HTTPServerUtils {
 	}
 	
 	public static EventHandler<HTTPRequest, Boolean> filterPath(String path, boolean isRegex) {
-		return new PathFilter(path, isRegex);
+		return new PathFilter(path, isRegex, false);
+	}
+
+	public static EventHandler<HTTPRequest, Boolean> limitToPath(String path) {
+		return new PathFilter(path, false, true);
+	}
+	
+	public static EventHandler<HTTPRequest, Boolean> limitToPath(String path, boolean isRegex) {
+		return new PathFilter(path, isRegex, true);
 	}
 	
 	public static EventHandler<HTTPRequest, HTTPRequest> defaultPageHandler(String defaultPage) {
@@ -62,13 +70,13 @@ public class HTTPServerUtils {
 	
 	public static EventSubscription<HTTPRequest, HTTPRequest> rewrite(HTTPServer server, String regex, String replacement) {
 		EventSubscription<HTTPRequest, HTTPRequest> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, rewriteHandler(regex, replacement));
-		subscription.filter(filterPath(regex, true));
+		subscription.filter(limitToPath(regex, true));
 		return subscription;
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPResponse> handleResources(HTTPServer server, ResourceContainer<?> root, String serverPath) {
 		EventSubscription<HTTPRequest, HTTPResponse> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, resourceHandler(root, serverPath));
-		subscription.filter(filterPath(serverPath, false));
+		subscription.filter(limitToPath(serverPath, false));
 		return subscription;
 	}
 	
