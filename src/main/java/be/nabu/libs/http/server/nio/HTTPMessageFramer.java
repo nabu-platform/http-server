@@ -66,10 +66,11 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 	private boolean isDone;
 	
 	/**
-	 * When writing to the backend, do we want to include the request?
-	 * Depending on whether we want pure mime or an actual http request this can differ
+	 * When writing to the backend, do we want to include the headers?
+	 * In most cases yes because they tell you something about the payload
+	 * But in some cases you may simply want to store the payload
 	 */
-	private boolean includeRequest;
+	private boolean includeHeaders = true;
 	
 	public HTTPMessageFramer(MessageDataProvider dataProvider) {
 		this.dataProvider = dataProvider;
@@ -167,16 +168,13 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 			}
 			if (writable == null) {
 				writable = ((WritableResource) resource).getWritable();
-				// write the data we have so far
-				if (includeRequest) {
-					writable.write(IOUtils.wrap(request.getBytes("ASCII"), true));
+				if (includeHeaders) {
+					for (Header header : headers) {
+						writable.write(IOUtils.wrap(header.toString().getBytes("ASCII"), true));
+						writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
+					}
 					writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
 				}
-				for (Header header : headers) {
-					writable.write(IOUtils.wrap(header.toString().getBytes("ASCII"), true));
-					writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
-				}
-				writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
 			}
 			long read = 0;
 			while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
@@ -194,7 +192,8 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 						}
 						writable.close();
 						try {
-							part = new MimeParser().parse((ReadableResource) resource, headers);
+							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
+							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
 							isDone = true;
 						}
 						catch (ParseException e) {
@@ -211,9 +210,11 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					}
 					// we have reached the end
 					if (totalRead == contentLength) {
+						logger.trace("Finished reading {} bytes", totalRead);
 						writable.close();
 						try {
-							part = new MimeParser().parse((ReadableResource) resource, headers);
+							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
+							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
 							isDone = true;
 						}
 						catch (ParseException e) {
@@ -281,6 +282,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 		return version;
 	}
 
+	@Override
 	public boolean isClosed() {
 		return isClosed;
 	}
@@ -290,5 +292,9 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 			dataProvider = new MemoryMessageDataProvider();
 		}
 		return dataProvider;
+	}
+
+	public Header[] getOriginalHeaders() {
+		return headers;
 	}
 }
