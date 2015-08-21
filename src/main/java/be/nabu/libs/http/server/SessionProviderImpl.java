@@ -53,7 +53,7 @@ public class SessionProviderImpl implements SessionProvider {
 	 * The default implementation generates a type 4
 	 */
 	private String generateId() {
-		return UUID.randomUUID().toString();
+		return UUID.randomUUID().toString().replace("-", "");
 	}
 
 	private class SessionImpl implements Session {
