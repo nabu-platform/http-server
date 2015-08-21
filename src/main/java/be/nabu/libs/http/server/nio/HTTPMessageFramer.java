@@ -8,6 +8,7 @@ import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.api.server.MessageFramer;
@@ -89,6 +90,10 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 			DelimitedCharContainer delimit = IOUtils.delimit(data, "\n");
 			request = IOUtils.toString(delimit);
 			if (!delimit.isDelimiterFound()) {
+				// if we have reached the maximum size for the request and not found one, throw an exception
+				if (request.length() >= maxInitialLineLength) {
+					throw new HTTPException(414);
+				}
 				request = null;
 			}
 			else {
@@ -150,7 +155,8 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 						return;
 					}
 					else if (!"chunked".equals(transferEncoding)) {
-						throw new UnknownFrameException("The HTTP frame does not contain a content length nor is it chunked");
+						// throw the exception code for length required
+						throw new HTTPException(411);
 					}
 					chunked = new ChunkedReadableByteContainer(initialBuffer);
 					chunked.setMaxChunkSize(maxChunkSize);

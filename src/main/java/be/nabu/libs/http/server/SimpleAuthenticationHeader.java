@@ -1,18 +1,15 @@
 package be.nabu.libs.http.server;
 
-import java.security.Principal;
-
+import be.nabu.libs.authentication.api.Token;
 import be.nabu.libs.http.api.server.AuthenticationHeader;
 import be.nabu.libs.http.core.ServerHeader;
 
 public class SimpleAuthenticationHeader implements AuthenticationHeader {
 
-	private Principal principal;
-	private String userId;
+	private Token token;
 
-	public SimpleAuthenticationHeader(String userId, Principal principal) {
-		this.userId = userId;
-		this.principal = principal;
+	public SimpleAuthenticationHeader(Token token) {
+		this.token = token;
 	}
 	
 	@Override
@@ -22,7 +19,7 @@ public class SimpleAuthenticationHeader implements AuthenticationHeader {
 
 	@Override
 	public String getValue() {
-		return principal.getName();
+		return token.getName();
 	}
 
 	@Override
@@ -30,11 +27,8 @@ public class SimpleAuthenticationHeader implements AuthenticationHeader {
 		return new String[0];
 	}
 	
-	public Principal getPrincipal() {
-		return principal;
-	}
-
-	public String getUserId() {
-		return userId;
+	@Override
+	public Token getToken() {
+		return token;
 	}
 }

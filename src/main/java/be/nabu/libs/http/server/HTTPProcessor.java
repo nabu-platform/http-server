@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.ResponseHandler;
+import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
@@ -77,7 +78,8 @@ public class HTTPProcessor {
 		});
 		if (response == null) {
 			URI requestURI = HTTPUtils.getURI(request, false);
-			response = new DefaultHTTPResponse(404, requestURI.getPath(), null);
+			logger.warn("Requested path not found: " + requestURI);
+			response = new DefaultHTTPResponse(404, HTTPCodes.getMessage(404), null);
 		}
 		logger.debug("> request:" + request.hashCode() + " (" + (new Date().getTime() - timestamp.getTime()) + "ms) " + response.getCode() + ": " + response.getMessage());
 		// fire the response to allow others to alter it
@@ -116,7 +118,7 @@ public class HTTPProcessor {
 				.replace("$message", e.getMessage() == null ? getDefaultMessage(e.getCode()) : e.getMessage())
 				.replace("$stacktrace", stringWriter.toString());
 		byte [] bytes = errorMessage.getBytes(Charset.forName("UTF-8"));
-		return new DefaultHTTPResponse(e.getCode(), e.getMessage(), new PlainMimeContentPart(null, IOUtils.wrap(bytes, true), 
+		return new DefaultHTTPResponse(e.getCode(), HTTPCodes.getMessage(e.getCode()), new PlainMimeContentPart(null, IOUtils.wrap(bytes, true), 
 			new MimeHeader("Connection", "close"),
 			new MimeHeader("Content-Length", "" + bytes.length),
 			new MimeHeader("Content-Type", "text/html; charset=UTF-8")

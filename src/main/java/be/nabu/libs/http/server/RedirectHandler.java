@@ -1,6 +1,7 @@
 package be.nabu.libs.http.server;
 
 import be.nabu.libs.events.api.EventHandler;
+import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
@@ -28,7 +29,7 @@ public class RedirectHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 			if (HTTPUtils.getURI(arg0, false).getPath().startsWith(path)) {
 				return new DefaultHTTPResponse(
 						permanent ? 301 : 307, 
-						permanent ? "Redirect" : "Temporary Redirect", new PlainMimeEmptyPart(null, 
+						permanent ? HTTPCodes.getMessage(301) : HTTPCodes.getMessage(307), new PlainMimeEmptyPart(null, 
 					new MimeHeader("Location", redirect),
 					new MimeHeader("Content-Length", "0")
 				));

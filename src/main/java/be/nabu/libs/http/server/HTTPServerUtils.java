@@ -5,6 +5,7 @@ import java.net.URI;
 
 import javax.net.ssl.SSLContext;
 
+import be.nabu.libs.authentication.api.Authenticator;
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.events.api.EventSubscription;
@@ -12,7 +13,6 @@ import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.api.server.RealmHandler;
-import be.nabu.libs.http.api.server.ServerAuthenticationHandler;
 import be.nabu.libs.http.server.io.DefaultHTTPServer;
 import be.nabu.libs.http.server.nio.NonBlockingHTTPServer;
 import be.nabu.libs.resources.ResourceFactory;
@@ -92,7 +92,7 @@ public class HTTPServerUtils {
 		return server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(null));
 	}
 	
-	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, ServerAuthenticationHandler handler, RealmHandler realmHandler) {
+	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, Authenticator handler, RealmHandler realmHandler) {
 		return server.getEventDispatcher().subscribe(HTTPRequest.class, new BasicAuthenticationHandler(handler, realmHandler));
 	}
 }

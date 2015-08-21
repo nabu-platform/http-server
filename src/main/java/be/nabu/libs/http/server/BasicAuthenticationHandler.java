@@ -3,13 +3,15 @@ package be.nabu.libs.http.server;
 import java.io.IOException;
 import java.security.Principal;
 
+import be.nabu.libs.authentication.api.Authenticator;
+import be.nabu.libs.authentication.api.Token;
+import be.nabu.libs.authentication.api.principals.BasicPrincipal;
 import be.nabu.libs.events.api.EventHandler;
+import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
-import be.nabu.libs.http.api.BasicPrincipal;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.RealmHandler;
-import be.nabu.libs.http.api.server.ServerAuthenticationHandler;
 import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
@@ -26,15 +28,15 @@ import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
  */
 public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTTPResponse> {
 	
-	private ServerAuthenticationHandler authenticator;
+	private Authenticator authenticator;
 	private RealmHandler realmHandler;
 	
-	public BasicAuthenticationHandler(ServerAuthenticationHandler handler) {
-		this(handler, null);
+	public BasicAuthenticationHandler(Authenticator authenticator) {
+		this(authenticator, null);
 	}
 	
-	public BasicAuthenticationHandler(ServerAuthenticationHandler handler, RealmHandler realmHandler) {
-		this.authenticator = handler;
+	public BasicAuthenticationHandler(Authenticator authenticator, RealmHandler realmHandler) {
+		this.authenticator = authenticator;
 		this.realmHandler = realmHandler;
 	}
 
@@ -57,9 +59,9 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 					String username = decoded.substring(0, index);
 					String password = decoded.substring(index + 1);
 					Principal principal = new BasicPrincipalImpl(username, password);
-					String userId = authenticator.authenticate(realm, principal);
-					if (userId != null) {
-						request.getContent().setHeader(new SimpleAuthenticationHeader(userId, principal));
+					Token token = authenticator.authenticate(realm, principal);
+					if (token != null) {
+						request.getContent().setHeader(new SimpleAuthenticationHeader(token));
 						return null;
 					}
 				}
@@ -68,7 +70,7 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 				}
 			}
 		}
-		return new DefaultHTTPResponse(401, "Unauthorized", new PlainMimeEmptyPart(null, 
+		return new DefaultHTTPResponse(401, HTTPCodes.getMessage(401), new PlainMimeEmptyPart(null, 
 			new MimeHeader("Content-Length", "0"),
 			new MimeHeader("WWW-Authenticate", "Basic realm=\"" + realm + "\"")
 		));
@@ -76,6 +78,7 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 	
 	private static class BasicPrincipalImpl implements BasicPrincipal {
 
+		private static final long serialVersionUID = 1L;
 		private String name;
 		private String password;
 

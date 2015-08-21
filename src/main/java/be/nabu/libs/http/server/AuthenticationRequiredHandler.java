@@ -1,6 +1,7 @@
 package be.nabu.libs.http.server;
 
 import be.nabu.libs.events.api.EventHandler;
+import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.core.DefaultHTTPResponse;
@@ -28,7 +29,7 @@ public class AuthenticationRequiredHandler implements EventHandler<HTTPRequest, 
 			if (challenge != null) {
 				content.setHeader(new MimeHeader("WWW-Authenticate", challenge));
 			}
-			return new DefaultHTTPResponse(401, "Unauthorized", content);
+			return new DefaultHTTPResponse(401, HTTPCodes.getMessage(401), content);
 		}
 		return null;
 	}
