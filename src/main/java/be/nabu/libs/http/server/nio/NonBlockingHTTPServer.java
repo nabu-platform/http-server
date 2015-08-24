@@ -275,6 +275,10 @@ public class NonBlockingHTTPServer implements HTTPServer {
 						catch (Exception e) {
 							throw new HTTPException(500, e);
 						}
+						catch (Throwable e) {
+							logger.error("Error occurred", e);
+							throw new HTTPException(500, e);
+						}
 					}
 					catch (HTTPException e) {
 						closeConnection = true;
