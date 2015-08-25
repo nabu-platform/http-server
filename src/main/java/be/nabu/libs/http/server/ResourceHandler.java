@@ -1,13 +1,17 @@
 package be.nabu.libs.http.server;
 
 import java.io.IOException;
+import java.text.ParseException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
 import be.nabu.libs.events.api.EventHandler;
+import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.resources.DynamicResource;
 import be.nabu.libs.resources.ResourceReadableContainer;
@@ -16,7 +20,10 @@ import be.nabu.libs.resources.URIUtils;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
+import be.nabu.libs.resources.api.TimestampedResource;
 import be.nabu.utils.mime.impl.FormatException;
+import be.nabu.utils.mime.impl.MimeHeader;
+import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 
 public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> {
 
@@ -48,6 +55,23 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 			if (resource == null) {
 				return null;
 			}
+			if (resource instanceof TimestampedResource) {
+				System.out.println("THE RESOURCE: " + resource + " > " + ((TimestampedResource) resource).getLastModified());
+				Date ifModifiedSince = HTTPUtils.getIfModifiedSince(request.getContent().getHeaders());
+				MimeHeader lastModifiedHeader = new MimeHeader("Last-Modified", HTTPUtils.formatDate(((TimestampedResource) resource).getLastModified()));
+				MimeHeader cacheHeader = new MimeHeader("Cache-Control", "public");
+				// if it has not been modified, send back a 304
+				if (ifModifiedSince != null && !ifModifiedSince.after(((TimestampedResource) resource).getLastModified())) {
+					return new DefaultHTTPResponse(304, HTTPCodes.getMessage(304), new PlainMimeEmptyPart(null, 
+						new MimeHeader("Content-Length", "0"), 
+						cacheHeader,
+						lastModifiedHeader
+					));
+				}
+				else {
+					return HTTPUtils.newResponse((ReadableResource) resource, cacheHeader, lastModifiedHeader);
+				}
+			}
 			return HTTPUtils.newResponse((ReadableResource) resource);
 		}
 		catch (IOException e) {
@@ -55,6 +79,9 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 		}
 		catch (FormatException e) {
 			throw new HTTPException(500, e);
+		}
+		catch (ParseException e) {
+			throw new HTTPException(400, e);
 		}
 	}
 	

@@ -34,7 +34,7 @@ public class HTTPServerUtils {
 	}
 	
 	public static EventHandler<HTTPRequest, Boolean> filterPath(String path) {
-		return new PathFilter(path);
+		return new PathFilter(path, false, false);
 	}
 	
 	public static EventHandler<HTTPRequest, Boolean> filterPath(String path, boolean isRegex) {
@@ -94,5 +94,13 @@ public class HTTPServerUtils {
 	
 	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, Authenticator handler, RealmHandler realmHandler) {
 		return server.getEventDispatcher().subscribe(HTTPRequest.class, new BasicAuthenticationHandler(handler, realmHandler));
+	}
+	
+	public static void addKeepAlive(HTTPServer server) {
+		server.getEventDispatcher().subscribe(HTTPResponse.class, new KeepAliveRewriter());
+	}
+	
+	public static void addDate(HTTPServer server) {
+		server.getEventDispatcher().subscribe(HTTPResponse.class, new DateRewriter());
 	}
 }
