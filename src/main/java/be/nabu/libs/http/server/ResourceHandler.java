@@ -56,7 +56,6 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 				return null;
 			}
 			if (resource instanceof TimestampedResource) {
-				System.out.println("THE RESOURCE: " + resource + " > " + ((TimestampedResource) resource).getLastModified());
 				Date ifModifiedSince = HTTPUtils.getIfModifiedSince(request.getContent().getHeaders());
 				MimeHeader lastModifiedHeader = new MimeHeader("Last-Modified", HTTPUtils.formatDate(((TimestampedResource) resource).getLastModified()));
 				MimeHeader cacheHeader = new MimeHeader("Cache-Control", "public");
