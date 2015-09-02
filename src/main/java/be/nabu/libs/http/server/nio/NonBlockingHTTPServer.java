@@ -41,6 +41,8 @@ import be.nabu.utils.io.api.Container;
 import be.nabu.utils.io.api.PushbackContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
+import be.nabu.utils.io.containers.BufferedWritableContainer;
 import be.nabu.utils.io.containers.bytes.SSLSocketByteContainer;
 import be.nabu.utils.io.containers.bytes.SocketByteContainer;
 import be.nabu.utils.mime.api.ContentPart;
@@ -54,7 +56,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	private ExecutorService executors;
 
-	private static final int BUFFER_SIZE = 40960;
+	private static final int BUFFER_SIZE = 512000;
 	private static String CHANNEL_TYPE_CLIENT = "client";
     private static String CHANNEL_TYPE_SERVER = "server";
     private static String CHANNEL_TYPE = "channelType";
@@ -63,6 +65,8 @@ public class NonBlockingHTTPServer implements HTTPServer {
     private MessageFramerFactory<HTTPRequest> framerFactory;
 
 	private Map<SocketChannel, RequestProcessor> requestProcessors = new HashMap<SocketChannel, RequestProcessor>();
+	private Map<RequestProcessor, Boolean> requestWriteInterest = new HashMap<RequestProcessor, Boolean>();
+	private Map<RequestProcessor, SelectionKey> requestSelectionKeys = new HashMap<RequestProcessor, SelectionKey>();
 	private SSLServerMode serverMode;
 	
 	public NonBlockingHTTPServer(int port, int poolSize, EventDispatcher eventDispatcher) {
@@ -98,7 +102,31 @@ public class NonBlockingHTTPServer implements HTTPServer {
         socketServerSelectionKey.attach(properties);
         
         while(true) {
-        	if (selector.select() == 0) {
+        	// note that we _don't_ subscribe to OP_WRITE continuously as the channels are nearly always ready to write (unless the buffer is full) so it would continuously trigger events
+        	// so we need to intelligently update to subscribe to OP_WRITE if we have application-level buffered data and unsubscribe if the application level buffer is empty
+        	// however this really should be done from the thread that is running the selector otherwise naive implementations might hang indefinitely while updating the actual interestops
+        	// for this reason we have the boolean map containing the requests to turn it on and off
+        	if (!requestWriteInterest.isEmpty()) {
+        		synchronized(requestWriteInterest) {
+        			Iterator<RequestProcessor> iterator = requestWriteInterest.keySet().iterator();
+        			while (iterator.hasNext()) {
+        				RequestProcessor processor = iterator.next();
+        				// if we want a new interest, add it
+        				if (requestSelectionKeys.containsKey(processor)) {
+        					if (requestWriteInterest.get(processor)) {
+        						requestSelectionKeys.get(processor).interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+        					}
+        					else {
+        						requestSelectionKeys.get(processor).interestOps(SelectionKey.OP_READ);
+        					}
+        				}
+        				iterator.remove();
+        			}
+        		}
+        	}
+        	// the selectNow() does NOT block whereas the select() does
+        	// however because we want to make sure we update the interestOps() as soon as possible, we can't do a blocking wait here, unregistered write ops would simply be ignored
+        	if (selector.selectNow() == 0) {
         		continue;
         	}
         	Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -121,6 +149,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 			                        	if (!requestProcessors.containsKey(clientSocketChannel)) {
 				                        	try {
 				                        		requestProcessors.put(clientSocketChannel, new RequestProcessor(clientSocketChannel));
+				                        		requestSelectionKeys.put(requestProcessors.get(clientSocketChannel), clientKey);
 				                        	}
 				                        	catch (SSLException e) {
 				                        		logger.error("Failed SSL connection", e);
@@ -140,21 +169,28 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		        				key.cancel();
 		        				if (requestProcessors.containsKey(clientChannel)) {
 			        				synchronized(this) {
+			        					requestSelectionKeys.remove(requestProcessors.get(clientChannel));
 			        					requestProcessors.remove(clientChannel);
 			        				}
 		        				}
 		        			}
-		        			else if (key.isReadable() && requestProcessors.containsKey(clientChannel)) {
-		        				RequestProcessor requestProcessor = requestProcessors.get(clientChannel);
-		        				if (requestProcessor != null) {
-		        					requestProcessor.schedule();
+		        			else {
+		        				if (key.isReadable() && requestProcessors.containsKey(clientChannel)) {
+			        				RequestProcessor requestProcessor = requestProcessors.get(clientChannel);
+			        				if (requestProcessor != null) {
+			        					requestProcessor.schedule();
+			        				}
 		        				}
+			        			if (key.isWritable() && requestProcessors.containsKey(clientChannel)) {
+			        				requestProcessors.get(clientChannel).responseProcessor.schedule();
+			        			}
 		        			}
 		        		}
 	        		}
 	        		catch(CancelledKeyException e) {
 	        			if (requestProcessors.containsKey(key.channel())) {
 		        			synchronized(requestProcessors) {
+		        				requestSelectionKeys.remove(requestProcessors.get(key.channel()));
 		        				requestProcessors.remove(key.channel());
 		        			}
 	        			}
@@ -196,6 +232,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		@Override
 		public void close() {
 			synchronized(requestProcessors) {
+				requestSelectionKeys.remove(requestProcessors.get(channel));
 				requestProcessors.remove(channel);
 			}
 			try {
@@ -209,7 +246,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	
 	public class ResponseProcessor extends SocketChannelProcessor {
 
-		private WritableContainer<ByteBuffer> writable;
+		private BufferedWritableContainer<ByteBuffer> writable;
 		private Queue<HTTPRequest> queue = new ArrayDeque<HTTPRequest>();
 		private boolean isScheduled = false;
 		private boolean isClosed;
@@ -218,12 +255,32 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		public ResponseProcessor(RequestProcessor requestProcessor, SocketChannel clientChannel, WritableContainer<ByteBuffer> writable) {
 			super(clientChannel);
 			this.requestProcessor = requestProcessor;
-			this.writable = writable;
+			this.writable = new BufferedWritableContainer<ByteBuffer>(writable, ByteBufferFactory.getInstance().newInstance(BUFFER_SIZE, true));
+			this.writable.setAllowPartialFlush(true);
 		}
 		
 		@Override
 		public void run() {
 			if (getChannel().isConnected()) {
+				if (writable.getActualBufferSize() > 0) {
+					try {
+						flush();
+						// still needs to be flushed, stop
+						if (writable.getActualBufferSize() > 0) {
+							synchronized(this) {
+								isScheduled = false;
+							}
+							return;
+						}
+					}
+					catch (IOException e) {
+						logger.error("Could not flush buffer to target", e);
+						synchronized(this) {
+							isScheduled = false;
+						}
+						return;
+					}
+				}
 				boolean closeConnection = false;
 				while(true) {
 					HTTPRequest request;
@@ -304,7 +361,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		private void write(HTTPResponse response) throws IOException, FormatException {
 			if (!isClosed() && getChannel().isConnected() && !getChannel().socket().isOutputShutdown()) {
 				new HTTPFormatter().formatResponse(response, writable);
-				writable.flush();
+				flush();
 			}
 		}
 
@@ -314,6 +371,31 @@ public class NonBlockingHTTPServer implements HTTPServer {
 				if (!isScheduled) {
 					isScheduled = true;
 					executors.submit(this);
+				}
+			}
+		}
+		
+		public void schedule() {
+			synchronized(this) {
+				if (!isScheduled) {
+					isScheduled = true;
+					executors.submit(this);
+				}
+			}
+		}
+		
+		public void flush() throws IOException {
+			writable.flush();
+			// still data in the buffer, add an interest in write ops so we can complete this write
+			if (writable.getActualBufferSize() > 0) {
+				synchronized(requestWriteInterest) {
+					requestWriteInterest.put(requestProcessor, true);
+				}
+			}
+			// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
+			else {
+				synchronized(requestWriteInterest) {
+					requestWriteInterest.put(requestProcessor, false);
 				}
 			}
 		}
@@ -337,13 +419,15 @@ public class NonBlockingHTTPServer implements HTTPServer {
 
 		public RequestProcessor(SocketChannel clientChannel) throws SSLException {
 			super(clientChannel);
-			Container<ByteBuffer> wrap = new SocketByteContainer(clientChannel);
+			SocketByteContainer socketByteContainer = new SocketByteContainer(clientChannel);
+			socketByteContainer.setBufferOutput(true);
+			Container<ByteBuffer> wrap = socketByteContainer;
 			if (sslContext != null) {
 				sslContainer = new SSLSocketByteContainer(wrap, sslContext, serverMode);
 				wrap = sslContainer;
 			}
 			this.readable = IOUtils.pushback(IOUtils.bufferReadable(wrap, IOUtils.newByteBuffer(BUFFER_SIZE, true)));
-			this.responseProcessor = new ResponseProcessor(this, clientChannel, IOUtils.bufferWritable(wrap, IOUtils.newByteBuffer(BUFFER_SIZE, true)));
+			this.responseProcessor = new ResponseProcessor(this, clientChannel, wrap);
 		}
 
 		public void schedule() {
