@@ -68,6 +68,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	private Map<RequestProcessor, Boolean> requestWriteInterest = new HashMap<RequestProcessor, Boolean>();
 	private Map<RequestProcessor, SelectionKey> requestSelectionKeys = new HashMap<RequestProcessor, SelectionKey>();
 	private SSLServerMode serverMode;
+	private Selector selector;
 	
 	public NonBlockingHTTPServer(int port, int poolSize, EventDispatcher eventDispatcher) {
 		this.port = port;
@@ -94,7 +95,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		channel.bind(new InetSocketAddress(port));		// new InetSocketAddress("localhost", port)
 		channel.configureBlocking(false);
 		
-		Selector selector = Selector.open();
+		selector = Selector.open();
 		SelectionKey socketServerSelectionKey = channel.register(selector, SelectionKey.OP_ACCEPT);
 		
 		Map<String, String> properties = new HashMap<String, String>();
@@ -125,8 +126,10 @@ public class NonBlockingHTTPServer implements HTTPServer {
         		}
         	}
         	// the selectNow() does NOT block whereas the select() does
-        	// however because we want to make sure we update the interestOps() as soon as possible, we can't do a blocking wait here, unregistered write ops would simply be ignored
-        	if (selector.selectNow() == 0) {
+        	// we want to make sure we update the interestOps() as soon as possible, we can't do a fully blocking wait here, unregistered write ops would simply be ignored
+        	// the selectNow() however ends up in a permanent while loop and takes up 100% of at least one thread
+        	// luckily the selector provides a wakeup() which unblocks the select() from another thread, this combines low overhead with quick interestops() updates
+        	if (selector.select() == 0) {
         		continue;
         	}
         	Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -390,6 +393,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 			if (writable.getActualBufferSize() > 0) {
 				synchronized(requestWriteInterest) {
 					requestWriteInterest.put(requestProcessor, true);
+					selector.wakeup();
 				}
 			}
 			// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
