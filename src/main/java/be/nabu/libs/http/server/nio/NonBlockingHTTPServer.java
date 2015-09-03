@@ -22,6 +22,7 @@ import javax.net.ssl.SSLException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.http.HTTPException;
@@ -38,6 +39,7 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.SSLServerMode;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.Container;
+import be.nabu.utils.io.api.CountingWritableContainer;
 import be.nabu.utils.io.api.PushbackContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
@@ -65,7 +67,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
     private MessageFramerFactory<HTTPRequest> framerFactory;
 
 	private Map<SocketChannel, RequestProcessor> requestProcessors = new HashMap<SocketChannel, RequestProcessor>();
-	private Map<RequestProcessor, Boolean> requestWriteInterest = new HashMap<RequestProcessor, Boolean>();
+	private volatile Map<RequestProcessor, Boolean> requestWriteInterest = new HashMap<RequestProcessor, Boolean>();
 	private Map<RequestProcessor, SelectionKey> requestSelectionKeys = new HashMap<RequestProcessor, SelectionKey>();
 	private SSLServerMode serverMode;
 	private Selector selector;
@@ -115,11 +117,16 @@ public class NonBlockingHTTPServer implements HTTPServer {
         				// if we want a new interest, add it
         				if (requestSelectionKeys.containsKey(processor)) {
         					if (requestWriteInterest.get(processor)) {
+        						logger.debug("Adding write operation listener for: {}", processor.getChannel().socket());
         						requestSelectionKeys.get(processor).interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
         					}
         					else {
+        						logger.debug("Removing write operation listener for: {}", processor.getChannel().socket());
         						requestSelectionKeys.get(processor).interestOps(SelectionKey.OP_READ);
         					}
+        				}
+        				else {
+        					logger.warn("Toggling non-existent selection key for: {}", processor.getChannel().socket());
         				}
         				iterator.remove();
         			}
@@ -151,6 +158,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 			                        synchronized(requestProcessors) {
 			                        	if (!requestProcessors.containsKey(clientSocketChannel)) {
 				                        	try {
+				                        		logger.debug("New connection: {}", clientSocketChannel);
 				                        		requestProcessors.put(clientSocketChannel, new RequestProcessor(clientSocketChannel));
 				                        		requestSelectionKeys.put(requestProcessors.get(clientSocketChannel), clientKey);
 				                        	}
@@ -166,12 +174,14 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		        		else {
 		        			SocketChannel clientChannel = (SocketChannel) key.channel();
 		        			if (!requestProcessors.containsKey(clientChannel)) {
+		        				logger.warn("No request processor, cancelling key for: {}", clientChannel.socket());
 		        				key.cancel();
 		        			}
 		        			else if (!clientChannel.isConnected() || !clientChannel.isOpen() || clientChannel.socket().isInputShutdown()) {
+		        				logger.warn("Disconnected, cancelling key for: {}", clientChannel.socket());
 		        				key.cancel();
 		        				if (requestProcessors.containsKey(clientChannel)) {
-			        				synchronized(this) {
+			        				synchronized(requestProcessors) {
 			        					requestSelectionKeys.remove(requestProcessors.get(clientChannel));
 			        					requestProcessors.remove(clientChannel);
 			        				}
@@ -181,10 +191,12 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		        				if (key.isReadable() && requestProcessors.containsKey(clientChannel)) {
 			        				RequestProcessor requestProcessor = requestProcessors.get(clientChannel);
 			        				if (requestProcessor != null) {
+			        					logger.trace("Scheduling processor, new data for: {}", clientChannel.socket());
 			        					requestProcessor.schedule();
 			        				}
 		        				}
 			        			if (key.isWritable() && requestProcessors.containsKey(clientChannel)) {
+			        				logger.trace("Scheduling write processor, write buffer available for: {}", clientChannel.socket());
 			        				requestProcessors.get(clientChannel).responseProcessor.schedule();
 			        			}
 		        			}
@@ -264,68 +276,59 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		
 		@Override
 		public void run() {
+			MDC.put("socket", getChannel().socket().toString());
 			if (getChannel().isConnected()) {
-				if (writable.getActualBufferSize() > 0) {
-					try {
-						flush();
-						// still needs to be flushed, stop
-						if (writable.getActualBufferSize() > 0) {
-							synchronized(this) {
-								isScheduled = false;
-							}
-							return;
-						}
-					}
-					catch (IOException e) {
-						logger.error("Could not flush buffer to target", e);
-						synchronized(this) {
-							isScheduled = false;
-						}
-						return;
-					}
-				}
 				boolean closeConnection = false;
 				while(true) {
-					HTTPRequest request;
-					synchronized(this) {
-						request = queue.poll();
-						if (request == null) {
-							isScheduled = false;
-							break;
-						}
-					}
 					try {
 						try {
-							boolean keepAlive = true;
-							if (request.getContent() != null) {
-								keepAlive = HTTPUtils.keepAlive(request);
-							}
-							HTTPResponse response = processor.process(
-								sslContext, 
-								requestProcessor.sslContainer == null ? null : requestProcessor.sslContainer.getPeerCertificates(), 
-								request, 
-								getChannel().socket().getInetAddress().getHostName(),
-								getChannel().socket().getPort()
-							);
-							if (keepAlive && response.getContent() != null) {
-								keepAlive = HTTPUtils.keepAlive(response);
-							}
-							else if (keepAlive && response.getCode() >= 300) {
-								keepAlive = false;
-							}
-							try {
-								write(response);
-							}
-							finally {
-								if (response.getContent() instanceof ContentPart) {
-									ReadableContainer<ByteBuffer> contentReadable = ((ContentPart) response.getContent()).getReadable();
-									if (contentReadable != null) {
-										contentReadable.close();
+							synchronized(writable) {
+								// still needs to be flushed, stop, it will be triggered again when write becomes available
+								if (!flush()) {
+									break;
+								}
+								HTTPRequest request;
+								synchronized(queue) {
+									request = queue.poll();
+									if (request == null) {
+										synchronized(this) {
+											isScheduled = false;
+										}
+										break;
 									}
 								}
-							}
-							if (!keepAlive) {
-								closeConnection = true;
+								boolean keepAlive = true;
+								if (request.getContent() != null) {
+									keepAlive = HTTPUtils.keepAlive(request);
+								}
+								logger.info("Processing request: {}", request.getTarget());
+								HTTPResponse response = processor.process(
+									sslContext, 
+									requestProcessor.sslContainer == null ? null : requestProcessor.sslContainer.getPeerCertificates(), 
+									request, 
+									getChannel().socket().getInetAddress().getHostName(),
+									getChannel().socket().getPort()
+								);
+								if (keepAlive && response.getContent() != null) {
+									keepAlive = HTTPUtils.keepAlive(response);
+								}
+								else if (keepAlive && response.getCode() >= 300) {
+									keepAlive = false;
+								}
+								try {
+									write(response);
+								}
+								finally {
+									if (response.getContent() instanceof ContentPart) {
+										ReadableContainer<ByteBuffer> contentReadable = ((ContentPart) response.getContent()).getReadable();
+										if (contentReadable != null) {
+											contentReadable.close();
+										}
+									}
+								}
+								if (!keepAlive) {
+									closeConnection = true;
+								}
 							}
 						}
 						catch (FormatException e) {
@@ -363,45 +366,68 @@ public class NonBlockingHTTPServer implements HTTPServer {
 
 		private void write(HTTPResponse response) throws IOException, FormatException {
 			if (!isClosed() && getChannel().isConnected() && !getChannel().socket().isOutputShutdown()) {
-				new HTTPFormatter().formatResponse(response, writable);
-				flush();
+				synchronized(writable) {
+					if (writable.getActualBufferSize() > 0) {
+						logger.warn("Writing to a buffer that still contains: {}", writable.getActualBufferSize());
+					}
+					CountingWritableContainer<ByteBuffer> countWritable = IOUtils.countWritable(writable);
+					new HTTPFormatter().formatResponse(response, countWritable);
+					logger.info("Wrote: {} bytes, buffer contains {}", countWritable.getWrittenTotal(), writable.getActualBufferSize());
+				}
+			}
+			else {
+				logger.warn("Skipping write (closed: " + isClosed() + ", connected: " + getChannel().isConnected() + ", output shutdown: " + getChannel().socket().isOutputShutdown() + ")");
 			}
 		}
 
 		public void push(HTTPRequest request) {
-			synchronized(this) {
+			synchronized(queue) {
 				queue.add(request);
-				if (!isScheduled) {
-					isScheduled = true;
-					executors.submit(this);
-				}
 			}
+			schedule();
 		}
 		
 		public void schedule() {
-			synchronized(this) {
-				if (!isScheduled) {
-					isScheduled = true;
-					executors.submit(this);
+			if (!isScheduled) {
+				synchronized(this) {
+					if (!isScheduled) {
+						isScheduled = true;
+						executors.submit(this);
+					}
 				}
 			}
 		}
 		
-		public void flush() throws IOException {
-			writable.flush();
-			// still data in the buffer, add an interest in write ops so we can complete this write
+		public boolean flush() throws IOException {
 			if (writable.getActualBufferSize() > 0) {
-				synchronized(requestWriteInterest) {
-					requestWriteInterest.put(requestProcessor, true);
-					selector.wakeup();
+				synchronized(writable) {
+					if (writable.getActualBufferSize() > 0) {
+						writable.flush();
+						boolean isEmpty = writable.getActualBufferSize() == 0;
+						// still data in the buffer, add an interest in write ops so we can complete this write
+						if (!isEmpty) {
+							logger.debug("Remaining {} bytes can not be flushed, rescheduling the writer", writable.getActualBufferSize());
+							// make sure we can reschedule it and no one can reschedule while we toggle the boolean
+							synchronized(this) {
+								isScheduled = false;
+								// make sure we select the OP_WRITE next time
+								synchronized(requestWriteInterest) {
+									requestWriteInterest.put(requestProcessor, true);
+									selector.wakeup();
+								}
+							}
+						}
+						// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
+						else {
+							synchronized(requestWriteInterest) {
+								requestWriteInterest.put(requestProcessor, false);
+							}
+						}
+						return isEmpty;
+					}
 				}
 			}
-			// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
-			else {
-				synchronized(requestWriteInterest) {
-					requestWriteInterest.put(requestProcessor, false);
-				}
-			}
+			return true;
 		}
 
 		public boolean isClosed() {
@@ -423,9 +449,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 
 		public RequestProcessor(SocketChannel clientChannel) throws SSLException {
 			super(clientChannel);
-			SocketByteContainer socketByteContainer = new SocketByteContainer(clientChannel);
-			socketByteContainer.setBufferOutput(true);
-			Container<ByteBuffer> wrap = socketByteContainer;
+			Container<ByteBuffer> wrap = new SocketByteContainer(clientChannel);
 			if (sslContext != null) {
 				sslContainer = new SSLSocketByteContainer(wrap, sslContext, serverMode);
 				wrap = sslContainer;
@@ -447,6 +471,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		
 		@Override
 		public void run() {
+			MDC.put("socket", getChannel().socket().toString());
 			if (getChannel().isConnected()) {
 				HTTPRequest request = null;
 				boolean closeConnection = false;
