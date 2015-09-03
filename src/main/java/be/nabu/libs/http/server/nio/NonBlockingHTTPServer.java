@@ -372,7 +372,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 					}
 					CountingWritableContainer<ByteBuffer> countWritable = IOUtils.countWritable(writable);
 					new HTTPFormatter().formatResponse(response, countWritable);
-					logger.info("Wrote: {} bytes, buffer contains {}", countWritable.getWrittenTotal(), writable.getActualBufferSize());
+					logger.debug("Wrote: {} bytes, buffer contains {}", countWritable.getWrittenTotal(), writable.getActualBufferSize());
 				}
 			}
 			else {
