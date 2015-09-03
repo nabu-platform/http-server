@@ -87,7 +87,7 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	public ReadableResource getResource(String path) throws IOException {
 		Resource resource;
 		if (!cache.containsKey(path)) { 
-			resource = ResourceUtils.resolve(root, path);
+			resource = resolveResource(path);
 			if (resource == null) {
 				return null;
 			}
@@ -106,5 +106,9 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 			resource = cache.get(path);
 		}
 		return (ReadableResource) resource;
+	}
+
+	protected Resource resolveResource(String path) throws IOException {
+		return ResourceUtils.resolve(root, path);
 	}
 }
