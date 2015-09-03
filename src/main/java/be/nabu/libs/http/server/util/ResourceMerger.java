@@ -3,7 +3,7 @@ package be.nabu.libs.http.server.util;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -40,7 +40,7 @@ abstract public class ResourceMerger extends ResourceHandler implements ContentR
 	
 	@Override
 	public String rewrite(String content, String mimeType) {
-		Set<String> resources = new HashSet<String>();
+		Set<String> resources = new LinkedHashSet<String>();
 		// only rewrite html response
 		if (mimeType.equalsIgnoreCase("text/html")) {
 			Matcher matcher = pattern.matcher(content);
