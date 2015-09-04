@@ -12,7 +12,7 @@ public class JavascriptMerger extends ResourceMerger {
 
 	@Override
 	protected String injectMerged(String content, String mergedURL) {
-		return content.replaceAll("(<head[^>]*>)", "$1<script src='" + mergedURL + "'></script>");
+		return content.replaceAll("(<head[^>]*>)", "$1\n<script src='" + mergedURL + "'></script>");
 	}
 
 }

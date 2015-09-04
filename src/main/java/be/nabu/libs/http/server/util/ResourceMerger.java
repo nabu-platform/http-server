@@ -27,15 +27,17 @@ abstract public class ResourceMerger extends ResourceHandler implements ContentR
 	private Pattern pattern;
 	private String serverPath;
 	private String mimeType;
+	private String name;
 	
 	public ResourceMerger(ResourceContainer<?> root, String serverPath, Pattern pattern, String mimeType) {
-		super(root, serverPath, true);
+		super(root, serverPath + (serverPath.endsWith("/") ? "" : "/") + mimeType.replaceFirst("^.*/", ""), true);
 		this.serverPath = serverPath;
 		this.mimeType = mimeType;
 		if (!this.serverPath.endsWith("/")) {
 			this.serverPath += "/";
 		}
 		this.pattern = pattern;
+		this.name = mimeType.replaceFirst("^.*/", "");
 	}
 	
 	@Override
@@ -60,7 +62,7 @@ abstract public class ResourceMerger extends ResourceHandler implements ContentR
 				}
 				builder.append(URIUtils.encodeURIComponent(resource));
 			}
-			content = injectMerged(content, serverPath + builder.toString());
+			content = injectMerged(content, serverPath + name + "/" + builder.toString());
 		}
 		return content;
 	}
@@ -72,7 +74,6 @@ abstract public class ResourceMerger extends ResourceHandler implements ContentR
 		List<ReadableContainer<ByteBuffer>> containers = new ArrayList<ReadableContainer<ByteBuffer>>();
 		long totalSize = 0;
 		for (String part : path.split(";")) {
-			System.out.println("MERGING: " + part);
 			String fullPath = URIUtils.decodeURIComponent(part);
 			Resource resolvedResource = super.resolveResource(fullPath);
 			if (resolvedResource instanceof ReadableResource) {

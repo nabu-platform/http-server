@@ -114,15 +114,16 @@ public class NonBlockingHTTPServer implements HTTPServer {
         			Iterator<RequestProcessor> iterator = requestWriteInterest.keySet().iterator();
         			while (iterator.hasNext()) {
         				RequestProcessor processor = iterator.next();
+        				SelectionKey selectionKey = requestSelectionKeys.get(processor);
         				// if we want a new interest, add it
-        				if (requestSelectionKeys.containsKey(processor)) {
-        					if (requestWriteInterest.get(processor)) {
+        				if (selectionKey != null) {
+							if (requestWriteInterest.get(processor)) {
         						logger.debug("Adding write operation listener for: {}", processor.getChannel().socket());
-        						requestSelectionKeys.get(processor).interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+        						selectionKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
         					}
         					else {
         						logger.debug("Removing write operation listener for: {}", processor.getChannel().socket());
-        						requestSelectionKeys.get(processor).interestOps(SelectionKey.OP_READ);
+        						selectionKey.interestOps(SelectionKey.OP_READ);
         					}
         				}
         				else {

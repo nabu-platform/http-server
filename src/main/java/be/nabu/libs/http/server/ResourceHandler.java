@@ -21,6 +21,7 @@ import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.resources.api.TimestampedResource;
+import be.nabu.utils.mime.api.ContentPart;
 import be.nabu.utils.mime.impl.FormatException;
 import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
@@ -31,11 +32,13 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	private ResourceContainer<?> root;
 	private boolean useCache;
 	private Map<String, ReadableResource> cache = new HashMap<String, ReadableResource>();
+	private boolean allowEncoding;
 	
 	public ResourceHandler(ResourceContainer<?> root, String serverPath, boolean useCache) {
 		this.root = root;
 		this.serverPath = serverPath;
 		this.useCache = useCache;
+		this.allowEncoding = useCache;
 	}
 	
 	@Override
@@ -68,7 +71,11 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 					));
 				}
 				else {
-					return HTTPUtils.newResponse((ReadableResource) resource, cacheHeader, lastModifiedHeader);
+					HTTPResponse newResponse = HTTPUtils.newResponse((ReadableResource) resource, cacheHeader, lastModifiedHeader);
+					if (allowEncoding && newResponse.getContent() instanceof ContentPart) {
+						HTTPUtils.setContentEncoding(newResponse.getContent(), request.getContent().getHeaders());
+					}
+					return newResponse;
 				}
 			}
 			return HTTPUtils.newResponse((ReadableResource) resource);
@@ -110,5 +117,13 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 
 	protected Resource resolveResource(String path) throws IOException {
 		return ResourceUtils.resolve(root, path);
+	}
+
+	public boolean isUseCache() {
+		return useCache;
+	}
+
+	public void setUseCache(boolean useCache) {
+		this.useCache = useCache;
 	}
 }
