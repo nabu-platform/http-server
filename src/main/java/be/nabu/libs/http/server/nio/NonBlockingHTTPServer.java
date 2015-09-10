@@ -48,7 +48,9 @@ import be.nabu.utils.io.containers.BufferedWritableContainer;
 import be.nabu.utils.io.containers.bytes.SSLSocketByteContainer;
 import be.nabu.utils.io.containers.bytes.SocketByteContainer;
 import be.nabu.utils.mime.api.ContentPart;
+import be.nabu.utils.mime.api.Header;
 import be.nabu.utils.mime.impl.FormatException;
+import be.nabu.utils.mime.impl.MimeUtils;
 
 public class NonBlockingHTTPServer implements HTTPServer {
 
@@ -71,6 +73,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	private Map<RequestProcessor, SelectionKey> requestSelectionKeys = new HashMap<RequestProcessor, SelectionKey>();
 	private SSLServerMode serverMode;
 	private Selector selector;
+	private boolean allowUnlimitedResponses = false;
 	
 	public NonBlockingHTTPServer(int port, int poolSize, EventDispatcher eventDispatcher) {
 		this.port = port;
@@ -367,12 +370,21 @@ public class NonBlockingHTTPServer implements HTTPServer {
 
 		private void write(HTTPResponse response) throws IOException, FormatException {
 			if (!isClosed() && getChannel().isConnected() && !getChannel().socket().isOutputShutdown()) {
+				if (!allowUnlimitedResponses && response.getContent() != null) {
+					if (MimeUtils.getHeader("Content-Length", response.getContent().getHeaders()) == null) {
+						Header header = MimeUtils.getHeader("Transfer-Encoding", response.getContent().getHeaders());
+						if (header == null || !"chunked".equals(header.getValue())) {
+							throw new FormatException("No content length or content-encoding found in response and unlimited responses are turned off");
+						}
+					}
+				}
 				synchronized(writable) {
 					if (writable.getActualBufferSize() > 0) {
 						logger.warn("Writing to a buffer that still contains: {}", writable.getActualBufferSize());
 					}
 					CountingWritableContainer<ByteBuffer> countWritable = IOUtils.countWritable(writable);
 					new HTTPFormatter().formatResponse(response, countWritable);
+					flush();
 					logger.debug("Wrote: {} bytes, buffer contains {}", countWritable.getWrittenTotal(), writable.getActualBufferSize());
 				}
 			}
@@ -401,6 +413,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		
 		public boolean flush() throws IOException {
 			if (writable.getActualBufferSize() > 0) {
+				logger.trace("Flushing " + writable.getActualBufferSize());
 				synchronized(writable) {
 					if (writable.getActualBufferSize() > 0) {
 						writable.flush();

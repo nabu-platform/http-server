@@ -37,6 +37,10 @@ import be.nabu.utils.mime.impl.MimeUtils;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 import be.nabu.utils.mime.util.ChunkedReadableByteContainer;
 
+/**
+ * TODO Optimization: search straight in the bytes of the dynamic for the combination "\r\n\r\n" (or \n\n) before parsing the request+headers
+ * Unlikely to do much though as standard packets are up to 64kb in size and standard headers are 0.5-2kb in size in general so they should almost always arrive in a single block
+ */
 public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 
 	public static final int COPY_SIZE = 4096;
@@ -50,7 +54,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 	private WritableContainer<ByteBuffer> writable;
 	private ChunkedReadableByteContainer chunked;
 	private ModifiablePart part;
-	private byte [] single = new byte[1];
+	private byte [] pair = new byte[2];
 	private ByteBuffer copyBuffer = new CyclicByteBuffer(COPY_SIZE);
 	
 	private String request;
@@ -118,10 +122,11 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				isClosed |= content.read(limitedBuffer) == -1;
 				
 				// it is possible to have a request without headers
-				if (allowWithoutHeaders(method) && initialBuffer.peek(IOUtils.wrap(single, false)) == 1 && single[0] == '\n') {
+				long peek = initialBuffer.peek(IOUtils.wrap(pair, false));
+				if (allowWithoutHeaders(method) && ((peek == 2 && pair[0] == '\r' && pair[1] == '\n') || (peek >= 1 && pair[0] == '\n'))) {
 					isDone = true;
 					// skip past the linefeed
-					initialBuffer.skip(1);
+					initialBuffer.skip(pair[0] == '\r' ? 2 : 1);
 					// push everything else back
 					content.pushback(initialBuffer);
 				}
