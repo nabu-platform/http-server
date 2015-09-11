@@ -32,25 +32,22 @@ import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.api.server.MessageFramer;
 import be.nabu.libs.http.api.server.MessageFramerFactory;
-import be.nabu.libs.http.core.HTTPFormatter;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.server.HTTPProcessor;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.SSLServerMode;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.Container;
-import be.nabu.utils.io.api.CountingWritableContainer;
 import be.nabu.utils.io.api.PushbackContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
-import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
-import be.nabu.utils.io.containers.BufferedWritableContainer;
 import be.nabu.utils.io.containers.bytes.SSLSocketByteContainer;
 import be.nabu.utils.io.containers.bytes.SocketByteContainer;
 import be.nabu.utils.mime.api.ContentPart;
 import be.nabu.utils.mime.api.Header;
 import be.nabu.utils.mime.impl.FormatException;
 import be.nabu.utils.mime.impl.MimeUtils;
+import be.nabu.utils.mime.impl.PullableMimeFormatter;
 
 public class NonBlockingHTTPServer implements HTTPServer {
 
@@ -265,17 +262,21 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	
 	public class ResponseProcessor extends SocketChannelProcessor {
 
-		private BufferedWritableContainer<ByteBuffer> writable;
 		private Queue<HTTPRequest> queue = new ArrayDeque<HTTPRequest>();
 		private boolean isScheduled = false;
 		private boolean isClosed;
 		private RequestProcessor requestProcessor;
+		private PullableMimeFormatter mimeFormatter;
+		private WritableContainer<ByteBuffer> writable;
+		private ByteBuffer buffer = IOUtils.newByteBuffer(4096, true);
 
 		public ResponseProcessor(RequestProcessor requestProcessor, SocketChannel clientChannel, WritableContainer<ByteBuffer> writable) {
 			super(clientChannel);
 			this.requestProcessor = requestProcessor;
-			this.writable = new BufferedWritableContainer<ByteBuffer>(writable, ByteBufferFactory.getInstance().newInstance(BUFFER_SIZE, true));
-			this.writable.setAllowPartialFlush(true);
+			this.writable = writable;
+			this.mimeFormatter = new PullableMimeFormatter();
+			this.mimeFormatter.setIncludeMainContentTrailingLineFeeds(false);
+			this.mimeFormatter.setAllowBinary(true);
 		}
 		
 		@Override
@@ -379,13 +380,21 @@ public class NonBlockingHTTPServer implements HTTPServer {
 					}
 				}
 				synchronized(writable) {
-					if (writable.getActualBufferSize() > 0) {
-						logger.warn("Writing to a buffer that still contains: {}", writable.getActualBufferSize());
+					byte [] firstLine = ("HTTP/" + response.getVersion() + " " + response.getCode() + " " + response.getMessage() + "\r\n").getBytes("ASCII");
+					if (buffer.write(firstLine) != firstLine.length) {
+						throw new IOException("The first line of the response is too long: " + firstLine.length);
 					}
-					CountingWritableContainer<ByteBuffer> countWritable = IOUtils.countWritable(writable);
-					new HTTPFormatter().formatResponse(response, countWritable);
+					// no content, just write the ending
+					if (response.getContent() == null) {
+						if (buffer.write("\r\n".getBytes("ASCII")) != 2) {
+							throw new IOException("Can not write the ending characters to the first line of the response");
+						}
+					}
+					// format the content lazily
+					else {
+						mimeFormatter.format(response.getContent());
+					}
 					flush();
-					logger.debug("Wrote: {} bytes, buffer contains {}", countWritable.getWrittenTotal(), writable.getActualBufferSize());
 				}
 			}
 			else {
@@ -412,34 +421,41 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		}
 		
 		public boolean flush() throws IOException {
-			if (writable.getActualBufferSize() > 0) {
-				logger.trace("Flushing " + writable.getActualBufferSize());
-				synchronized(writable) {
-					if (writable.getActualBufferSize() > 0) {
-						writable.flush();
-						boolean isEmpty = writable.getActualBufferSize() == 0;
-						// still data in the buffer, add an interest in write ops so we can complete this write
-						if (!isEmpty) {
-							logger.debug("Remaining {} bytes can not be flushed, rescheduling the writer", writable.getActualBufferSize());
-							// make sure we can reschedule it and no one can reschedule while we toggle the boolean
-							synchronized(this) {
-								isScheduled = false;
-								// make sure we select the OP_WRITE next time
-								synchronized(requestWriteInterest) {
-									requestWriteInterest.put(requestProcessor, true);
-									selector.wakeup();
-								}
+			synchronized(writable) {
+				// flush the buffer (if required)
+				if (buffer.remainingData() == 0 || buffer.remainingData() == writable.write(buffer)) {
+					// copy from the mime formatter (if necessary)
+					if (!mimeFormatter.isDone()) {
+						long read = 0;
+						while ((read = mimeFormatter.read(buffer)) > 0) {
+							// if we couldn't write everything out to the socket, stop 
+							if (writable.write(buffer) != read) {
+								break;
 							}
 						}
-						// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
-						else {
-							synchronized(requestWriteInterest) {
-								requestWriteInterest.put(requestProcessor, false);
-							}
-						}
-						return isEmpty;
 					}
 				}
+				// still data in the buffer, add an interest in write ops so we can complete this write
+				if (buffer.remainingData() > 0 || !mimeFormatter.isDone()) {
+					logger.debug("Remaining bytes can not be flushed, rescheduling the writer");
+					// make sure we can reschedule it and no one can reschedule while we toggle the boolean
+					synchronized(this) {
+						isScheduled = false;
+						// make sure we select the OP_WRITE next time
+						synchronized(requestWriteInterest) {
+							requestWriteInterest.put(requestProcessor, true);
+							selector.wakeup();
+						}
+					}
+					return false;
+				}
+				// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
+				else {
+					synchronized(requestWriteInterest) {
+						requestWriteInterest.put(requestProcessor, false);
+					}
+				}
+				writable.flush();
 			}
 			return true;
 		}
