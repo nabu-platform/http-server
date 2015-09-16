@@ -115,20 +115,31 @@ public class NonBlockingHTTPServer implements HTTPServer {
         			while (iterator.hasNext()) {
         				RequestProcessor processor = iterator.next();
         				SelectionKey selectionKey = requestSelectionKeys.get(processor);
-        				// if we want a new interest, add it
-        				if (selectionKey != null) {
-							if (requestWriteInterest.get(processor)) {
-        						logger.debug("Adding write operation listener for: {}", processor.getChannel().socket());
-        						selectionKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-        					}
-        					else {
-        						logger.debug("Removing write operation listener for: {}", processor.getChannel().socket());
-        						selectionKey.interestOps(SelectionKey.OP_READ);
-        					}
+        				try {
+	        				// if we want a new interest, add it
+	        				if (selectionKey != null) {
+								if (requestWriteInterest.get(processor)) {
+	        						logger.debug("Adding write operation listener for: {}", processor.getChannel().socket());
+	        						selectionKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+	        					}
+	        					else {
+	        						logger.debug("Removing write operation listener for: {}", processor.getChannel().socket());
+	        						selectionKey.interestOps(SelectionKey.OP_READ);
+	        					}
+	        				}
+	        				else {
+	        					logger.warn("Toggling non-existent selection key for: {}", processor.getChannel().socket());
+	        				}
         				}
-        				else {
-        					logger.warn("Toggling non-existent selection key for: {}", processor.getChannel().socket());
-        				}
+    	        		catch(CancelledKeyException e) {
+    	        			if (requestProcessors.containsKey(selectionKey.channel())) {
+    		        			synchronized(requestProcessors) {
+    		        				requestSelectionKeys.remove(requestProcessors.get(selectionKey.channel()));
+    		        				requestProcessors.remove(selectionKey.channel());
+    		        			}
+    	        			}
+    	        			selectionKey.channel().close();
+    	        		}
         				iterator.remove();
         			}
         		}
