@@ -111,6 +111,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
         	// for this reason we have the boolean map containing the requests to turn it on and off
         	if (!requestWriteInterest.isEmpty()) {
         		synchronized(requestWriteInterest) {
+        			logger.trace("Processing write interests: {}", requestWriteInterest);
         			Iterator<RequestProcessor> iterator = requestWriteInterest.keySet().iterator();
         			while (iterator.hasNext()) {
         				RequestProcessor processor = iterator.next();
@@ -119,11 +120,11 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	        				// if we want a new interest, add it
 	        				if (selectionKey != null) {
 								if (requestWriteInterest.get(processor)) {
-	        						logger.debug("Adding write operation listener for: {}", processor.getChannel().socket());
+	        						logger.debug("Adding write operation listener for: {}, selectionKey: {}", processor.getChannel().socket(), selectionKey);
 	        						selectionKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 	        					}
 	        					else {
-	        						logger.debug("Removing write operation listener for: {}", processor.getChannel().socket());
+	        						logger.debug("Removing write operation listener for: {}, selectionKey: {}", processor.getChannel().socket(), selectionKey);
 	        						selectionKey.interestOps(SelectionKey.OP_READ);
 	        					}
 	        				}
@@ -259,8 +260,11 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		@Override
 		public void close() {
 			synchronized(requestProcessors) {
-				requestSelectionKeys.remove(requestProcessors.get(channel));
+				SelectionKey removed = requestSelectionKeys.remove(requestProcessors.get(channel));
 				requestProcessors.remove(channel);
+				if (removed != null) {
+					removed.cancel();
+				}
 			}
 			try {
 				channel.close();
@@ -405,11 +409,11 @@ public class NonBlockingHTTPServer implements HTTPServer {
 					else {
 						mimeFormatter.format(response.getContent());
 					}
-					flush();
 				}
 			}
 			else {
 				logger.warn("Skipping write (closed: " + isClosed() + ", connected: " + getChannel().isConnected() + ", output shutdown: " + getChannel().socket().isOutputShutdown() + ")");
+				close();
 			}
 		}
 
@@ -432,43 +436,52 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		}
 		
 		public boolean flush() throws IOException {
-			synchronized(writable) {
-				// flush the buffer (if required)
-				if (buffer.remainingData() == 0 || buffer.remainingData() == writable.write(buffer)) {
-					// copy from the mime formatter (if necessary)
-					if (!mimeFormatter.isDone()) {
-						long read = 0;
-						while ((read = mimeFormatter.read(buffer)) > 0) {
-							// if we couldn't write everything out to the socket, stop 
-							if (writable.write(buffer) != read) {
-								break;
+			if (!isClosed() && getChannel().isConnected() && !getChannel().socket().isOutputShutdown()) {
+				synchronized(writable) {
+					// flush the buffer (if required)
+					if (buffer.remainingData() == 0 || buffer.remainingData() == writable.write(buffer)) {
+						// copy from the mime formatter (if necessary)
+						if (!mimeFormatter.isDone()) {
+							long read = 0;
+							while ((read = mimeFormatter.read(buffer)) > 0) {
+								// if we couldn't write everything out to the socket, stop 
+								if (writable.write(buffer) != read) {
+									break;
+								}
 							}
 						}
 					}
-				}
-				// still data in the buffer, add an interest in write ops so we can complete this write
-				if (buffer.remainingData() > 0 || !mimeFormatter.isDone()) {
-					logger.debug("Remaining bytes can not be flushed, rescheduling the writer");
-					// make sure we can reschedule it and no one can reschedule while we toggle the boolean
-					synchronized(this) {
-						isScheduled = false;
-						// make sure we select the OP_WRITE next time
+					// still data in the buffer, add an interest in write ops so we can complete this write
+					if (buffer.remainingData() > 0 || !mimeFormatter.isDone()) {
+						logger.debug("Remaining bytes can not be flushed, rescheduling the writer for {}", requestProcessor);
+						// make sure we can reschedule it and no one can reschedule while we toggle the boolean
+						synchronized(this) {
+							isScheduled = false;
+							// make sure we select the OP_WRITE next time
+							synchronized(requestWriteInterest) {
+								requestWriteInterest.put(requestProcessor, true);
+								logger.trace("Writer rescheduled, waking up selector");
+								selector.wakeup();
+							}
+						}
+						return false;
+					}
+					// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
+					else {
+						logger.trace("Flush successful, removing writer for {}", requestProcessor);
 						synchronized(requestWriteInterest) {
-							requestWriteInterest.put(requestProcessor, true);
-							selector.wakeup();
+							requestWriteInterest.put(requestProcessor, false);
 						}
 					}
-					return false;
+					writable.flush();
 				}
-				// deregister interest in write ops otherwise it will cycle endlessly (it is almost always writable)
-				else {
-					synchronized(requestWriteInterest) {
-						requestWriteInterest.put(requestProcessor, false);
-					}
-				}
-				writable.flush();
+				return true;
 			}
-			return true;
+			else {
+				logger.warn("Skipping flush (closed: " + isClosed() + ", connected: " + getChannel().isConnected() + ", output shutdown: " + getChannel().socket().isOutputShutdown() + ")");
+				close();
+				return false;
+			}
 		}
 
 		public boolean isClosed() {
