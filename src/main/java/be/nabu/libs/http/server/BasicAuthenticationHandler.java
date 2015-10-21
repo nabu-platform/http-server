@@ -30,6 +30,7 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 	
 	private Authenticator authenticator;
 	private RealmHandler realmHandler;
+	private boolean required = true;
 	
 	public BasicAuthenticationHandler(Authenticator authenticator) {
 		this(authenticator, null);
@@ -68,8 +69,15 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 				catch (IOException e) {
 					throw new HTTPException(500, e);
 				}
+				catch (RuntimeException e) {
+					throw new HTTPException(401, e);
+				}
 			}
 		}
+		return required ? newAuthenticationRequiredResponse(realm) : null;
+	}
+	
+	public static HTTPResponse newAuthenticationRequiredResponse(String realm) {
 		return new DefaultHTTPResponse(401, HTTPCodes.getMessage(401), new PlainMimeEmptyPart(null, 
 			new MimeHeader("Content-Length", "0"),
 			new MimeHeader("WWW-Authenticate", "Basic realm=\"" + realm + "\"")
@@ -97,4 +105,13 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 			return password;
 		}
 	}
+
+	public boolean isRequired() {
+		return required;
+	}
+
+	public void setRequired(boolean required) {
+		this.required = required;
+	}
+	
 }
