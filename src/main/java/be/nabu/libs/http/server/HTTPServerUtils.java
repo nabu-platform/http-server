@@ -107,4 +107,8 @@ public class HTTPServerUtils {
 	public static RealmHandler newFixedRealmHandler(String realm) {
 		return new FixedRealmHandler(realm);
 	}
+	
+	public static EventHandler<HTTPResponse, HTTPResponse> ensureAuthenticateHeader(String realm) {
+		return new EnsureAuthenticateHeader(realm);
+	}
 }
