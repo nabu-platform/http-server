@@ -103,4 +103,8 @@ public class HTTPServerUtils {
 	public static void addDate(HTTPServer server) {
 		server.getEventDispatcher().subscribe(HTTPResponse.class, new DateRewriter());
 	}
+	
+	public static RealmHandler newFixedRealmHandler(String realm) {
+		return new FixedRealmHandler(realm);
+	}
 }
