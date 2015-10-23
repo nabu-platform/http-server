@@ -29,6 +29,7 @@ import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.server.HTTPExceptionFormatter;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.api.server.MessageFramer;
 import be.nabu.libs.http.api.server.MessageFramerFactory;
@@ -133,12 +134,14 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	        				}
         				}
     	        		catch(CancelledKeyException e) {
-    	        			if (requestProcessors.containsKey(selectionKey.channel())) {
-    		        			synchronized(requestProcessors) {
-    		        				requestSelectionKeys.remove(requestProcessors.get(selectionKey.channel()));
+    	        			RequestProcessor requestProcessor = requestProcessors.get(selectionKey.channel());
+	        				if (requestProcessor != null) {
+	        					synchronized(requestProcessors) {
+    		        				requestSelectionKeys.remove(requestProcessor);
     		        				requestProcessors.remove(selectionKey.channel());
-    		        			}
-    	        			}
+    		        				requestProcessor.close();
+		        				}
+		        			}
     	        			selectionKey.channel().close();
     	        		}
         				iterator.remove();
@@ -216,10 +219,12 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		        		}
 	        		}
 	        		catch(CancelledKeyException e) {
-	        			if (requestProcessors.containsKey(key.channel())) {
+	        			RequestProcessor requestProcessor = requestProcessors.get(key.channel());
+	        			if (requestProcessor != null) {
 		        			synchronized(requestProcessors) {
-		        				requestSelectionKeys.remove(requestProcessors.get(key.channel()));
+		        				requestSelectionKeys.remove(requestProcessor);
 		        				requestProcessors.remove(key.channel());
+		        				requestProcessor.close();
 		        			}
 	        			}
 	        			key.channel().close();
@@ -239,6 +244,13 @@ public class NonBlockingHTTPServer implements HTTPServer {
 	public void stop() {
 		try {
 			channel.close();
+			synchronized(requestProcessors) {
+				for (RequestProcessor processor : requestProcessors.values()) {
+					processor.close();
+				}
+				requestProcessors.clear();
+				requestSelectionKeys.clear();
+			}
 		}
 		catch (IOException e) {
 			logger.error("Failed to close server", e);
@@ -284,6 +296,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		private PullableMimeFormatter mimeFormatter;
 		private WritableContainer<ByteBuffer> writable;
 		private ByteBuffer buffer = IOUtils.newByteBuffer(4096, true);
+		private HTTPResponse response;
 
 		public ResponseProcessor(RequestProcessor requestProcessor, SocketChannel clientChannel, WritableContainer<ByteBuffer> writable) {
 			super(clientChannel);
@@ -300,6 +313,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 			if (getChannel().isConnected()) {
 				boolean closeConnection = false;
 				while(true) {
+					HTTPRequest request = null;
 					try {
 						try {
 							synchronized(writable) {
@@ -307,7 +321,6 @@ public class NonBlockingHTTPServer implements HTTPServer {
 								if (!flush()) {
 									break;
 								}
-								HTTPRequest request;
 								synchronized(queue) {
 									request = queue.poll();
 									if (request == null) {
@@ -322,7 +335,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 									keepAlive = HTTPUtils.keepAlive(request);
 								}
 								logger.info("Processing request: {}", request.getTarget());
-								HTTPResponse response = processor.process(
+								response = processor.process(
 									sslContext, 
 									requestProcessor.sslContainer == null ? null : requestProcessor.sslContainer.getPeerCertificates(), 
 									request, 
@@ -335,17 +348,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 								else if (keepAlive && response.getCode() >= 300) {
 									keepAlive = false;
 								}
-								try {
-									write(response);
-								}
-								finally {
-									if (response.getContent() instanceof ContentPart) {
-										ReadableContainer<ByteBuffer> contentReadable = ((ContentPart) response.getContent()).getReadable();
-										if (contentReadable != null) {
-											contentReadable.close();
-										}
-									}
-								}
+								write(response);
 								if (!keepAlive) {
 									closeConnection = true;
 								}
@@ -367,7 +370,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 						closeConnection = true;
 						if (getChannel().socket().isConnected() && !getChannel().socket().isClosed() && !getChannel().socket().isOutputShutdown() && getChannel().socket().isBound()) {
 							try {
-								write(processor.createError(e));
+								write(processor.getExceptionFormatter().format(request, e));
 							}
 							catch (FormatException fe) {
 								// could not send back response...
@@ -381,6 +384,25 @@ public class NonBlockingHTTPServer implements HTTPServer {
 				if (closeConnection) {
 					close();
 				}
+			}
+		}
+
+		public void closeResponseData() {
+			try {
+				try {
+					if (response != null && response.getContent() instanceof ContentPart) {
+						ReadableContainer<ByteBuffer> contentReadable = ((ContentPart) response.getContent()).getReadable();
+						if (contentReadable != null) {
+							contentReadable.close();
+						}
+					}
+				}
+				finally {
+					mimeFormatter.close();
+				}
+			}
+			catch (IOException e) {
+				// no recovery
 			}
 		}
 
@@ -491,6 +513,12 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		public void setClosed(boolean isClosed) {
 			this.isClosed = isClosed;
 		}
+		
+		@Override
+		public void close() {
+			closeResponseData();
+			super.close();
+		}
 	}
 	
 	public class RequestProcessor extends SocketChannelProcessor {
@@ -566,7 +594,7 @@ public class NonBlockingHTTPServer implements HTTPServer {
 					closeConnection = true;
 					if (getChannel().socket().isConnected() && !getChannel().socket().isClosed() && !getChannel().socket().isOutputShutdown() && getChannel().socket().isBound()) {
 						try {
-							responseProcessor.write(processor.createError(e));
+							responseProcessor.write(processor.getExceptionFormatter().format(request, e));
 						}
 						catch (FormatException fe) {
 							// could not send back response...
@@ -598,6 +626,12 @@ public class NonBlockingHTTPServer implements HTTPServer {
 		public boolean equals(Object object) {
 			return object instanceof RequestProcessor && ((RequestProcessor) object).getChannel().equals(getChannel());
 		}
+		
+		@Override
+		public void close() {
+			responseProcessor.closeResponseData();
+			super.close();
+		}
 	}
 
 	public MessageFramerFactory<HTTPRequest> getFramerFactory() {
@@ -609,5 +643,15 @@ public class NonBlockingHTTPServer implements HTTPServer {
 
 	public void setFramerFactory(MessageFramerFactory<HTTPRequest> framerFactory) {
 		this.framerFactory = framerFactory;
+	}
+
+	@Override
+	public void setExceptionFormatter(HTTPExceptionFormatter formatter) {
+		processor.setExceptionFormatter(formatter);
+	}
+
+	@Override
+	public HTTPExceptionFormatter getExceptionFormatter() {
+		return processor.getExceptionFormatter();
 	}
 }

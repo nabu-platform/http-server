@@ -18,6 +18,7 @@ import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.server.HTTPExceptionFormatter;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.core.DefaultDynamicResourceProvider;
 import be.nabu.libs.http.core.HTTPFormatter;
@@ -120,11 +121,12 @@ public class DefaultHTTPServer implements HTTPServer {
 					IOUtils.wrap(new BufferedInputStream(socket.getInputStream()))
 				);
 				WritableContainer<ByteBuffer> writable = IOUtils.wrap(new BufferedOutputStream(socket.getOutputStream()));
+				HTTPRequest request = null;
 				try {
 					while(!Thread.currentThread().isInterrupted() && socket.isConnected() && !socket.isClosed() && !socket.isInputShutdown() && socket.isBound() && !readable.isEOF()) {
 						boolean keepAlive = true;
 						try {
-							HTTPRequest request = parser.parseRequest(readable, expectContinueHandler);
+							request = parser.parseRequest(readable, expectContinueHandler);
 							if (request != null) {
 								logger.debug("< socket:" + socket.hashCode() + " [request:" + request.hashCode() + "] " + request.getMethod() + ": " + request.getTarget());
 								if (request.getContent() != null) {
@@ -172,7 +174,7 @@ public class DefaultHTTPServer implements HTTPServer {
 					logger.error("Could not execute request", e);
 					// if the client is still connected, report the exception to him
 					if (socket.isConnected() && !socket.isClosed() && !socket.isOutputShutdown() && socket.isBound()) {
-						formatter.formatResponse(processor.createError(e), writable);
+						formatter.formatResponse(processor.getExceptionFormatter().format(request, e), writable);
 						writable.flush();
 					}
 				}
@@ -211,5 +213,15 @@ public class DefaultHTTPServer implements HTTPServer {
 
 	public void setDynamicResourceProvider(DynamicResourceProvider dynamicResourceProvider) {
 		this.dynamicResourceProvider = dynamicResourceProvider;
+	}
+	
+	@Override
+	public void setExceptionFormatter(HTTPExceptionFormatter formatter) {
+		processor.setExceptionFormatter(formatter);
+	}
+
+	@Override
+	public HTTPExceptionFormatter getExceptionFormatter() {
+		return processor.getExceptionFormatter();
 	}
 }
