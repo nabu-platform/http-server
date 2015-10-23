@@ -29,7 +29,7 @@ public class AbsenceOfHeadersValidator implements EventHandler<HTTPRequest, HTTP
 			if (fail) {
 				for (String header : headersToCheck) {
 					if (MimeUtils.getHeader(header, request.getContent().getHeaders()) != null) {
-						throw new HTTPException(400, "Bad Request");
+						throw new HTTPException(400, "Header not allowed: " + header);
 					}
 				}
 			}
