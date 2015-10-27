@@ -6,6 +6,9 @@ import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
@@ -18,11 +21,13 @@ import be.nabu.utils.mime.impl.PlainMimeContentPart;
 
 public class DefaultHTTPExceptionFormatter implements HTTPExceptionFormatter {
 
+	private Logger logger = LoggerFactory.getLogger(getClass());
 	private Map<Integer, String> errorTemplates = new HashMap<Integer, String>();
 	private String defaultErrorTemplate = "<html><head><title>$code: $message</title></head><body><h1>$code: $message</h1><p>An error occurred: </p><pre>$stacktrace</pre></body></html>";
 	
 	@Override
 	public HTTPResponse format(HTTPRequest request, HTTPException exception) {
+		logger.error("HTTP Exception " + exception.getCode(), exception);
 		StringWriter stringWriter = new StringWriter();
 		PrintWriter printer = new PrintWriter(stringWriter);
 		exception.printStackTrace(printer);
