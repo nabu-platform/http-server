@@ -3,7 +3,9 @@ package be.nabu.libs.http.server.nio;
 import java.io.Closeable;
 import java.io.IOException;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,7 @@ import be.nabu.utils.mime.impl.MimeParser;
 import be.nabu.utils.mime.impl.MimeUtils;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 import be.nabu.utils.mime.util.ChunkedReadableByteContainer;
+import be.nabu.utils.mime.util.ChunkedWritableByteContainer;
 
 /**
  * TODO Optimization: search straight in the bytes of the dynamic for the combination "\r\n\r\n" (or \n\n) before parsing the request+headers
@@ -186,6 +189,9 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					}
 					writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
 				}
+				if (chunked != null) {
+					writable = new ChunkedWritableByteContainer(writable, false);
+				}
 			}
 			long read = 0;
 			while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
@@ -194,13 +200,15 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
 					// if the chunk is done, stop
 					if (chunked.isFinished()) {
-						// switch the transfer encoding with a length header
-						for (int i = 0; i < headers.length; i++) {
-							if (headers[i].getName().equalsIgnoreCase("Transfer-Encoding")) {
-								headers[i] = new MimeHeader("Content-Length", "" + totalChunkRead);
-								break;
-							}
+						Header[] additionalHeaders = chunked.getAdditionalHeaders();
+						// add a content length header for information
+						if (additionalHeaders == null || MimeUtils.getContentLength(additionalHeaders) == null) {
+							List<Header> finalHeaders = new ArrayList<Header>();
+							finalHeaders.addAll(Arrays.asList(additionalHeaders));
+							finalHeaders.add(new MimeHeader("Content-Length", "" + totalChunkRead));
+							additionalHeaders = finalHeaders.toArray(new Header[finalHeaders.size()]);
 						}
+						((ChunkedWritableByteContainer) writable).finish(additionalHeaders);
 						writable.close();
 						try {
 							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
