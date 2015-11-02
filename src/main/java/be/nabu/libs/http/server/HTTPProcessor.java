@@ -25,11 +25,11 @@ import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 
 public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTPResponse> {
 	
-	private boolean injectRemoteInformation;
+	private boolean isProxied;
 
-	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean injectRemoteInformation) {
+	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied) {
 		super(HTTPRequest.class, HTTPResponse.class, dispatcher, exceptionFormatter);
-		this.injectRemoteInformation = injectRemoteInformation;
+		this.isProxied = isProxied;
 	}
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
@@ -45,7 +45,12 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			request.getContent().removeHeader(ServerHeader.REQUEST_SECURITY.name());
 			// add a new one
 			request.getContent().setHeader(new SimpleSecurityHeader(securityContext.getSSLContext(), securityContext.getPeerCertificates()));
-			if (injectRemoteInformation) {
+			if (!isProxied) {
+				for (ServerHeader header : ServerHeader.values()) {
+					if (!header.isUserValueAllowed()) {
+						request.getContent().removeHeader(header.getName());
+					}
+				}
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, ((InetSocketAddress) sourceContext.getSocket().getRemoteSocketAddress()).getHostName());
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(sourceContext.getSocket().getPort()).toString());
 			}

@@ -47,7 +47,7 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 			return null;
 		}
 		else {
-			return new HTTPProcessor(dispatcher, exceptionFormatter, !isProxied);
+			return new HTTPProcessor(dispatcher, exceptionFormatter, isProxied);
 		}
 	}
 
