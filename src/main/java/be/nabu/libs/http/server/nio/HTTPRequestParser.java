@@ -1,21 +1,21 @@
 package be.nabu.libs.http.server.nio;
 
 import java.io.IOException;
+import java.text.ParseException;
 
-import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.server.MessageDataProvider;
-import be.nabu.libs.http.api.server.MessageFramer;
 import be.nabu.libs.http.core.DefaultHTTPRequest;
+import be.nabu.libs.nio.api.MessageParser;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.PushbackContainer;
 
-public class HTTPRequestFramer implements MessageFramer<HTTPRequest> {
+public class HTTPRequestParser implements MessageParser<HTTPRequest> {
 
-	private HTTPMessageFramer messageFramer;
+	private HTTPMessageParser messageFramer;
 	
-	public HTTPRequestFramer(MessageDataProvider dataProvider) {
-		this.messageFramer = new HTTPMessageFramer(dataProvider);
+	public HTTPRequestParser(MessageDataProvider dataProvider) {
+		this.messageFramer = new HTTPMessageParser(dataProvider);
 	}
 
 	@Override
@@ -24,7 +24,7 @@ public class HTTPRequestFramer implements MessageFramer<HTTPRequest> {
 	}
 
 	@Override
-	public void push(PushbackContainer<ByteBuffer> content) throws UnknownFrameException, IOException {
+	public void push(PushbackContainer<ByteBuffer> content) throws IOException, ParseException {
 		messageFramer.push(content);
 	}
 
@@ -48,7 +48,7 @@ public class HTTPRequestFramer implements MessageFramer<HTTPRequest> {
 		return messageFramer.isClosed();
 	}
 
-	protected HTTPMessageFramer getMessageFramer() {
+	protected HTTPMessageParser getMessageFramer() {
 		return messageFramer;
 	}
 }

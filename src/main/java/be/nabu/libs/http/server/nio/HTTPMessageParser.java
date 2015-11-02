@@ -11,11 +11,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.http.HTTPException;
-import be.nabu.libs.http.UnknownFrameException;
 import be.nabu.libs.http.api.server.MessageDataProvider;
-import be.nabu.libs.http.api.server.MessageFramer;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
+import be.nabu.libs.nio.api.MessageParser;
 import be.nabu.libs.resources.api.LocatableResource;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
@@ -44,7 +43,7 @@ import be.nabu.utils.mime.util.ChunkedWritableByteContainer;
  * TODO Optimization: search straight in the bytes of the dynamic for the combination "\r\n\r\n" (or \n\n) before parsing the request+headers
  * Unlikely to do much though as standard packets are up to 64kb in size and standard headers are 0.5-2kb in size in general so they should almost always arrive in a single block
  */
-public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
+public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 
 	public static final int COPY_SIZE = 4096;
 	
@@ -80,14 +79,14 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 	 */
 	private boolean includeHeaders = true;
 	
-	public HTTPMessageFramer(MessageDataProvider dataProvider) {
+	public HTTPMessageParser(MessageDataProvider dataProvider) {
 		this.dataProvider = dataProvider;
 		initialBuffer = new DynamicByteBuffer();
 		initialBuffer.mark();
 	}
 	
 	@Override
-	public void push(PushbackContainer<ByteBuffer> content) throws IOException, UnknownFrameException {
+	public void push(PushbackContainer<ByteBuffer> content) throws IOException, ParseException {
 		if (request == null) {
 			initialBuffer.reset();
 			ByteBuffer limitedBuffer = ByteBufferFactory.getInstance().limit(initialBuffer, null, maxInitialLineLength - initialBuffer.remainingData());
@@ -109,7 +108,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				int httpIndex = request.lastIndexOf("HTTP/");
 				
 				if (firstSpaceIndex < 0 || httpIndex < 0) {
-					throw new UnknownFrameException("Could not parse request line: " + request);
+					throw new ParseException("Could not parse request line: " + request, 0);
 				}
 				method = request.substring(0, firstSpaceIndex);
 				target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
@@ -119,35 +118,30 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 		}
 		if (request != null && headers == null && !isDone()) {
 			// reset so we see all the data
-			try {
-				initialBuffer.reset();
-				ByteBuffer limitedBuffer = ByteBufferFactory.getInstance().limit(initialBuffer, null, maxHeaderSize - initialBuffer.remainingData());
-				isClosed |= content.read(limitedBuffer) == -1;
-				
-				// it is possible to have a request without headers
-				long peek = initialBuffer.peek(IOUtils.wrap(pair, false));
-				if (allowWithoutHeaders(method) && ((peek == 2 && pair[0] == '\r' && pair[1] == '\n') || (peek >= 1 && pair[0] == '\n'))) {
-					isDone = true;
-					// skip past the linefeed
-					initialBuffer.skip(pair[0] == '\r' ? 2 : 1);
-					// push everything else back
-					content.pushback(initialBuffer);
-				}
-				else {
-					ReadableContainer<CharBuffer> data = new ReadableStraightByteToCharContainer(initialBuffer);
-					headers = MimeUtils.readHeaders(data, false);
-					// if we did not find the headers in the allotted space, throw an exception
-					if (headers == null && limitedBuffer.remainingSpace() == 0) {
-						throw new UnknownFrameException("No headers found within the size limit: " + maxHeaderSize + " bytes");
-					}
-					else if (headers != null) {
-						initialBuffer.unmark();
-						logger.trace("Headers: {}", Arrays.asList(headers));
-					}
-				}
+			initialBuffer.reset();
+			ByteBuffer limitedBuffer = ByteBufferFactory.getInstance().limit(initialBuffer, null, maxHeaderSize - initialBuffer.remainingData());
+			isClosed |= content.read(limitedBuffer) == -1;
+			
+			// it is possible to have a request without headers
+			long peek = initialBuffer.peek(IOUtils.wrap(pair, false));
+			if (allowWithoutHeaders(method) && ((peek == 2 && pair[0] == '\r' && pair[1] == '\n') || (peek >= 1 && pair[0] == '\n'))) {
+				isDone = true;
+				// skip past the linefeed
+				initialBuffer.skip(pair[0] == '\r' ? 2 : 1);
+				// push everything else back
+				content.pushback(initialBuffer);
 			}
-			catch (ParseException e) {
-				throw new UnknownFrameException(e);
+			else {
+				ReadableContainer<CharBuffer> data = new ReadableStraightByteToCharContainer(initialBuffer);
+				headers = MimeUtils.readHeaders(data, false);
+				// if we did not find the headers in the allotted space, throw an exception
+				if (headers == null && limitedBuffer.remainingSpace() == 0) {
+					throw new ParseException("No headers found within the size limit: " + maxHeaderSize + " bytes", 1);
+				}
+				else if (headers != null) {
+					initialBuffer.unmark();
+					logger.trace("Headers: {}", Arrays.asList(headers));
+				}
 			}
 		}
 		if (headers != null && !isDone()) {
@@ -177,7 +171,7 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 				}
 				resource = getDataProvider().newResource(method, target, version, headers);
 				if (resource == null) {
-					throw new UnknownFrameException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers));
+					throw new ParseException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers), 2);
 				}
 			}
 			if (writable == null) {
@@ -210,14 +204,9 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 						}
 						((ChunkedWritableByteContainer) writable).finish(additionalHeaders);
 						writable.close();
-						try {
-							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
-							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
-							isDone = true;
-						}
-						catch (ParseException e) {
-							throw new UnknownFrameException(e);
-						}
+						// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
+						part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
+						isDone = true;
 					}
 					else {
 						totalChunkRead += chunkRead;
@@ -231,14 +220,9 @@ public class HTTPMessageFramer implements MessageFramer<ModifiablePart> {
 					if (totalRead == contentLength) {
 						logger.trace("Finished reading {} bytes", totalRead);
 						writable.close();
-						try {
-							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
-							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
-							isDone = true;
-						}
-						catch (ParseException e) {
-							throw new UnknownFrameException(e);
-						}
+						// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
+						part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
+						isDone = true;
 					}
 				}
 				// don't take anything into account that is not processed

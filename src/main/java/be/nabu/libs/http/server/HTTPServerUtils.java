@@ -6,31 +6,24 @@ import java.net.URI;
 import javax.net.ssl.SSLContext;
 
 import be.nabu.libs.authentication.api.Authenticator;
-import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.api.server.RealmHandler;
-import be.nabu.libs.http.server.io.DefaultHTTPServer;
-import be.nabu.libs.http.server.nio.NonBlockingHTTPServer;
+import be.nabu.libs.http.server.nio.NIOHTTPServer;
 import be.nabu.libs.resources.ResourceFactory;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.utils.io.SSLServerMode;
 
 public class HTTPServerUtils {
-	
-	public static HTTPServer newBlocking(SSLContext sslContext, int port, int poolSize, EventDispatcher dispatcher) throws IOException {
-		return new DefaultHTTPServer(sslContext, port, poolSize, dispatcher);
+
+	public static HTTPServer newServer(int port, int processPoolSize) {
+		return newServer(null, null, port, 10, processPoolSize);
 	}
-	
-	public static HTTPServer newNonBlocking(SSLContext sslContext, SSLServerMode serverMode, int port, int poolSize, EventDispatcher dispatcher) {
-		return new NonBlockingHTTPServer(sslContext, serverMode, port, poolSize, dispatcher);
-	}
-	
-	public static HTTPServer newNonBlocking(int port, int poolSize, EventDispatcher dispatcher) {
-		return new NonBlockingHTTPServer(null, null, port, poolSize, dispatcher);
+	public static HTTPServer newServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize) {
+		return new NIOHTTPServer(sslContext, sslServerMode, port, ioPoolSize, processPoolSize);
 	}
 	
 	public static EventHandler<HTTPRequest, Boolean> filterPath(String path) {
@@ -65,17 +58,17 @@ public class HTTPServerUtils {
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPRequest> handleDefaultPage(HTTPServer server, String defaultPage) {
-		return server.getEventDispatcher().subscribe(HTTPRequest.class, defaultPageHandler(defaultPage));
+		return server.getDispatcher(null).subscribe(HTTPRequest.class, defaultPageHandler(defaultPage));
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPRequest> rewrite(HTTPServer server, String regex, String replacement) {
-		EventSubscription<HTTPRequest, HTTPRequest> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, rewriteHandler(regex, replacement));
+		EventSubscription<HTTPRequest, HTTPRequest> subscription = server.getDispatcher(null).subscribe(HTTPRequest.class, rewriteHandler(regex, replacement));
 		subscription.filter(limitToPath(regex, true));
 		return subscription;
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPResponse> handleResources(HTTPServer server, ResourceContainer<?> root, String serverPath) {
-		EventSubscription<HTTPRequest, HTTPResponse> subscription = server.getEventDispatcher().subscribe(HTTPRequest.class, resourceHandler(root, serverPath));
+		EventSubscription<HTTPRequest, HTTPResponse> subscription = server.getDispatcher(null).subscribe(HTTPRequest.class, resourceHandler(root, serverPath));
 		subscription.filter(limitToPath(serverPath, false));
 		return subscription;
 	}
@@ -85,23 +78,23 @@ public class HTTPServerUtils {
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPResponse> verifyAbsenceOfHeaders(HTTPServer server, String...headers) {
-		return server.getEventDispatcher().subscribe(HTTPRequest.class, new AbsenceOfHeadersValidator(false, headers));
+		return server.getDispatcher(null).subscribe(HTTPRequest.class, new AbsenceOfHeadersValidator(false, headers));
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPResponse> requireAuthentication(HTTPServer server) {
-		return server.getEventDispatcher().subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(null));
+		return server.getDispatcher(null).subscribe(HTTPRequest.class, new AuthenticationRequiredHandler(null));
 	}
 	
 	public static EventSubscription<HTTPRequest, HTTPResponse> requireBasicAuthentication(HTTPServer server, Authenticator handler, RealmHandler realmHandler) {
-		return server.getEventDispatcher().subscribe(HTTPRequest.class, new BasicAuthenticationHandler(handler, realmHandler));
+		return server.getDispatcher(null).subscribe(HTTPRequest.class, new BasicAuthenticationHandler(handler, realmHandler));
 	}
 	
 	public static void addKeepAlive(HTTPServer server) {
-		server.getEventDispatcher().subscribe(HTTPResponse.class, new KeepAliveRewriter());
+		server.getDispatcher(null).subscribe(HTTPResponse.class, new KeepAliveRewriter());
 	}
 	
 	public static void addDate(HTTPServer server) {
-		server.getEventDispatcher().subscribe(HTTPResponse.class, new DateRewriter());
+		server.getDispatcher(null).subscribe(HTTPResponse.class, new DateRewriter());
 	}
 	
 	public static RealmHandler newFixedRealmHandler(String realm) {
