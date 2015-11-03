@@ -40,7 +40,7 @@ public class HTTPRequestParser implements MessageParser<HTTPRequest> {
 
 	@Override
 	public HTTPRequest getMessage() {
-		return new DefaultHTTPRequest(messageFramer.getMethod(), messageFramer.getTarget(), messageFramer.getMessage());
+		return new DefaultHTTPRequest(messageFramer.getMethod(), messageFramer.getTarget(), messageFramer.getMessage(), messageFramer.getVersion());
 	}
 
 	@Override

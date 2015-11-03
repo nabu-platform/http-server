@@ -40,7 +40,7 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 			}
 		}
 		if (host == null && request.getVersion() >= 1.1) {
-			throw new HTTPException(400, "Expecting host header");
+			throw new HTTPException(400, "Expecting host header for HTTP version " + request.getVersion());
 		}
 		EventDispatcher dispatcher = getDispatcher(host);
 		if (dispatcher == null) {
