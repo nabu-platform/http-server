@@ -5,6 +5,7 @@ import javax.net.ssl.SSLContext;
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.server.HTTPPipelineFactory;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.server.DefaultHTTPExceptionFormatter;
@@ -15,8 +16,12 @@ import be.nabu.utils.io.SSLServerMode;
 
 public class NIOHTTPServer extends NIOServerImpl implements HTTPServer {
 
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, HTTPPipelineFactory pipelineFactory) {
+		super(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, pipelineFactory);
+	}
+	
 	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize) {
-		super(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, new HTTPPipelineFactory(
+		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, new HTTPPipelineFactoryImpl(
 			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), false), 
 			new MemoryMessageDataProvider())
 		);

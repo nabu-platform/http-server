@@ -5,24 +5,23 @@ import java.nio.channels.SelectionKey;
 
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.server.HTTPPipelineFactory;
 import be.nabu.libs.http.api.server.HTTPProcessorFactory;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.HTTPUtils;
-import be.nabu.libs.http.server.HTTPProcessorFactoryImpl;
 import be.nabu.libs.nio.api.KeepAliveDecider;
 import be.nabu.libs.nio.api.MessageFormatter;
 import be.nabu.libs.nio.api.MessageFormatterFactory;
 import be.nabu.libs.nio.api.NIOServer;
 import be.nabu.libs.nio.api.Pipeline;
-import be.nabu.libs.nio.api.PipelineFactory;
 import be.nabu.libs.nio.impl.MessagePipelineImpl;
 
-public class HTTPPipelineFactory implements PipelineFactory {
+public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 
 	private MessageDataProvider messageDataProvider;
-	private HTTPProcessorFactoryImpl processorFactory;
+	private HTTPProcessorFactory processorFactory;
 
-	public HTTPPipelineFactory(HTTPProcessorFactoryImpl processorFactory, MessageDataProvider messageDataProvider) {
+	public HTTPPipelineFactoryImpl(HTTPProcessorFactory processorFactory, MessageDataProvider messageDataProvider) {
 		this.processorFactory = processorFactory;
 		this.messageDataProvider = messageDataProvider;
 	}
@@ -50,14 +49,14 @@ public class HTTPPipelineFactory implements PipelineFactory {
 		);
 	}
 
-	public MessageDataProvider getMessageDataProvider() {
-		return messageDataProvider;
-	}
-
 	public HTTPProcessorFactory getProcessorFactory() {
 		return processorFactory;
 	}
 
+	public MessageDataProvider getMessageDataProvider() {
+		return messageDataProvider;
+	}
+	
 	public void setMessageDataProvider(MessageDataProvider messageDataProvider) {
 		this.messageDataProvider = messageDataProvider;
 	}
