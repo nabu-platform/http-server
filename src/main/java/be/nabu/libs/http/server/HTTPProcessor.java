@@ -28,7 +28,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 	private boolean isProxied;
 
 	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied) {
-		super(HTTPRequest.class, HTTPResponse.class, dispatcher, exceptionFormatter);
+		super(HTTPRequest.class, HTTPResponse.class, dispatcher, exceptionFormatter, true);
 		this.isProxied = isProxied;
 	}
 
