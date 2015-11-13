@@ -6,6 +6,7 @@ import java.net.URI;
 import javax.net.ssl.SSLContext;
 
 import be.nabu.libs.authentication.api.Authenticator;
+import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.api.HTTPRequest;
@@ -19,11 +20,11 @@ import be.nabu.utils.io.SSLServerMode;
 
 public class HTTPServerUtils {
 
-	public static HTTPServer newServer(int port, int processPoolSize) {
-		return newServer(null, null, port, 10, processPoolSize);
+	public static HTTPServer newServer(int port, int processPoolSize, EventDispatcher dispatcher) {
+		return newServer(null, null, port, 10, processPoolSize, dispatcher);
 	}
-	public static HTTPServer newServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize) {
-		return new NIOHTTPServer(sslContext, sslServerMode, port, ioPoolSize, processPoolSize);
+	public static HTTPServer newServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher) {
+		return new NIOHTTPServer(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher);
 	}
 	
 	public static EventHandler<HTTPRequest, Boolean> filterPath(String path) {

@@ -14,17 +14,20 @@ import be.nabu.libs.nio.api.ExceptionFormatter;
 import be.nabu.libs.nio.impl.NIOServerImpl;
 import be.nabu.utils.io.SSLServerMode;
 
+/**
+ * In the default scenario the "core" dispatcher (used by the server) is used for the incoming http requests
+ */
 public class NIOHTTPServer extends NIOServerImpl implements HTTPServer {
 
-	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, HTTPPipelineFactory pipelineFactory) {
-		super(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, pipelineFactory);
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, HTTPPipelineFactory pipelineFactory, EventDispatcher coreDispatcher) {
+		super(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, pipelineFactory, coreDispatcher);
 	}
 	
-	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize) {
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher) {
 		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, new HTTPPipelineFactoryImpl(
-			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), false), 
-			new MemoryMessageDataProvider())
-		);
+			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), false, dispatcher), 
+			new MemoryMessageDataProvider()
+		), dispatcher);
 	}
 
 	@Override

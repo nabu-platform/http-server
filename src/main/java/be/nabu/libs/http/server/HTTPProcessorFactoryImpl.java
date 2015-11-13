@@ -19,9 +19,10 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 	private ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter;
 	private boolean isProxied;
 
-	public HTTPProcessorFactoryImpl(ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied) {
+	public HTTPProcessorFactoryImpl(ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, EventDispatcher coreDispatcher) {
 		this.exceptionFormatter = exceptionFormatter;
 		this.isProxied = isProxied;
+		this.route(null, coreDispatcher);
 	}
 	
 	public void route(String hostMatch, EventDispatcher eventDispatcher) {

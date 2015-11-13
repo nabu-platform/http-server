@@ -58,6 +58,7 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 			if (resource == null) {
 				return null;
 			}
+			MimeHeader contentTypeHeader = new MimeHeader("Content-Type", resource.getContentType() == null ? "application/octet-stream" : resource.getContentType());
 			if (resource instanceof TimestampedResource) {
 				Date ifModifiedSince = HTTPUtils.getIfModifiedSince(request.getContent().getHeaders());
 				MimeHeader lastModifiedHeader = new MimeHeader("Last-Modified", HTTPUtils.formatDate(((TimestampedResource) resource).getLastModified()));
@@ -67,18 +68,19 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 					return new DefaultHTTPResponse(304, HTTPCodes.getMessage(304), new PlainMimeEmptyPart(null, 
 						new MimeHeader("Content-Length", "0"), 
 						cacheHeader,
-						lastModifiedHeader
+						lastModifiedHeader,
+						contentTypeHeader
 					));
 				}
 				else {
-					HTTPResponse newResponse = HTTPUtils.newResponse((ReadableResource) resource, cacheHeader, lastModifiedHeader);
+					HTTPResponse newResponse = HTTPUtils.newResponse((ReadableResource) resource, cacheHeader, lastModifiedHeader, contentTypeHeader);
 					if (allowEncoding && newResponse.getContent() instanceof ContentPart) {
 						HTTPUtils.setContentEncoding(newResponse.getContent(), request.getContent().getHeaders());
 					}
 					return newResponse;
 				}
 			}
-			return HTTPUtils.newResponse((ReadableResource) resource);
+			return HTTPUtils.newResponse((ReadableResource) resource, contentTypeHeader);
 		}
 		catch (IOException e) {
 			throw new HTTPException(500, e);
