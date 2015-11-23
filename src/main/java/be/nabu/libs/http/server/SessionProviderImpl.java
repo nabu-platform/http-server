@@ -6,10 +6,10 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 
+import be.nabu.libs.http.api.server.ListableSessionProvider;
 import be.nabu.libs.http.api.server.Session;
-import be.nabu.libs.http.api.server.SessionProvider;
 
-public class SessionProviderImpl implements SessionProvider {
+public class SessionProviderImpl implements ListableSessionProvider {
 
 	private Map<String, SessionImpl> sessions = new HashMap<String, SessionImpl>();
 	
@@ -106,5 +106,12 @@ public class SessionProviderImpl implements SessionProvider {
 			this.lastAccessed = lastAccessed;
 		}
 		
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	@Override
+	public Iterator<Session> iterator() {
+		Iterator iterator = sessions.values().iterator();
+		return iterator;
 	}
 }
