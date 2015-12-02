@@ -34,6 +34,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	
+	@Override
 	public HTTPResponse process(SecurityContext securityContext, SourceContext sourceContext, final HTTPRequest request) {
 		if (request.getVersion() >= 1.1) {
 			if (MimeUtils.getHeader("Host", request.getContent().getHeaders()) == null) {
@@ -51,7 +52,10 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 						request.getContent().removeHeader(header.getName());
 					}
 				}
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, ((InetSocketAddress) sourceContext.getSocket().getRemoteSocketAddress()).getHostName());
+				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocket().getRemoteSocketAddress());
+				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
+				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
+				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(sourceContext.getSocket().getPort()).toString());
 			}
 		}
