@@ -73,14 +73,14 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 					));
 				}
 				else {
-					HTTPResponse newResponse = HTTPUtils.newResponse((ReadableResource) resource, cacheHeader, lastModifiedHeader, contentTypeHeader);
+					HTTPResponse newResponse = HTTPUtils.newResponse(request, (ReadableResource) resource, cacheHeader, lastModifiedHeader, contentTypeHeader);
 					if (allowEncoding && newResponse.getContent() instanceof ContentPart) {
 						HTTPUtils.setContentEncoding(newResponse.getContent(), request.getContent().getHeaders());
 					}
 					return newResponse;
 				}
 			}
-			return HTTPUtils.newResponse((ReadableResource) resource, contentTypeHeader);
+			return HTTPUtils.newResponse(request, (ReadableResource) resource, contentTypeHeader);
 		}
 		catch (IOException e) {
 			throw new HTTPException(500, e);

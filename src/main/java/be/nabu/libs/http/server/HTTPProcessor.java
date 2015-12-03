@@ -58,7 +58,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			}
 		}
 		HTTPResponse response = super.process(securityContext, sourceContext, request);
-
+		
 		// make sure any requested connection closing is also enforced in the server
 		if (!HTTPUtils.keepAlive(request) && response.getContent() != null) {
 			response.getContent().setHeader(new MimeHeader("Connection", "close"));
@@ -70,6 +70,6 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 	protected HTTPResponse getDefaultResponse(HTTPRequest request) {
 		// if no response, generate a 404
 		logger.warn("Could not find requested target: " + request.getTarget());
-		return new DefaultHTTPResponse(404, HTTPCodes.getMessage(404), new PlainMimeEmptyPart(null, new MimeHeader("Content-Length", "0")));
+		return new DefaultHTTPResponse(request, 404, HTTPCodes.getMessage(404), new PlainMimeEmptyPart(null, new MimeHeader("Content-Length", "0")));
 	}
 }

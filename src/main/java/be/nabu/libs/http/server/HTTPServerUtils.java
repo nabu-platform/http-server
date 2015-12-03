@@ -39,6 +39,14 @@ public class HTTPServerUtils {
 		return new PathFilter(path, false, true);
 	}
 	
+	public static EventHandler<HTTPResponse, Boolean> limitToRequestPath(String path) {
+		return new RequestPathFilter(path, false, true);
+	}
+	
+	public static EventHandler<HTTPResponse, Boolean> limitToRequestPath(String path, boolean isRegex) {
+		return new RequestPathFilter(path, isRegex, true);
+	}
+	
 	public static EventHandler<HTTPRequest, Boolean> limitToPath(String path, boolean isRegex) {
 		return new PathFilter(path, isRegex, true);
 	}
