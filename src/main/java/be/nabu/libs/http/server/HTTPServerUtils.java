@@ -113,4 +113,8 @@ public class HTTPServerUtils {
 	public static EventHandler<HTTPResponse, HTTPResponse> ensureAuthenticateHeader(String realm) {
 		return new EnsureAuthenticateHeader(realm);
 	}
+	
+	public static EventHandler<HTTPResponse, HTTPResponse> ensureContentEncoding() {
+		return new EnsureContentEncodingHandler();
+	}
 }
