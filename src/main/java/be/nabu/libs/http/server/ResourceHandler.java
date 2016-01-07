@@ -2,9 +2,13 @@ package be.nabu.libs.http.server;
 
 import java.io.IOException;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.http.HTTPCodes;
@@ -29,13 +33,14 @@ import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> {
 
 	private String serverPath;
-	private ResourceContainer<?> root;
+	private List<ResourceContainer<?>> roots = new ArrayList<ResourceContainer<?>>();
 	private boolean useCache;
 	private Map<String, ReadableResource> cache = new HashMap<String, ReadableResource>();
 	private boolean allowEncoding;
+	private Map<ResourceContainer<?>, Set<String>> resources = new HashMap<ResourceContainer<?>, Set<String>>();
 	
 	public ResourceHandler(ResourceContainer<?> root, String serverPath, boolean useCache) {
-		this.root = root;
+		this.roots.add(root);
 		this.serverPath = serverPath;
 		this.useCache = useCache;
 		this.allowEncoding = useCache;
@@ -118,7 +123,22 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	}
 
 	protected Resource resolveResource(String path) throws IOException {
-		return ResourceUtils.resolve(root, path);
+		for (ResourceContainer<?> root : roots) {
+			Resource resource = ResourceUtils.resolve(root, path);
+			if (resource != null) {
+				// if we are using the cache, remember where the resource came from so we can remove it from cache if we unload the resource
+				if (useCache) {
+					synchronized(resources) {
+						if (!resources.containsKey(root)) {
+							resources.put(root, new HashSet<String>());
+						}
+						resources.get(root).add(path);
+					}
+				}
+				return resource;
+			}
+		}
+		return null;
 	}
 
 	public boolean isUseCache() {
@@ -127,5 +147,37 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 
 	public void setUseCache(boolean useCache) {
 		this.useCache = useCache;
+	}
+
+	public void addRoot(ResourceContainer<?> container) {
+		if (!roots.contains(container)) {
+			synchronized(roots) {
+				if (!roots.contains(container)) {
+					roots.add(container);
+				}
+			}
+		}
+	}
+	
+	public void removeRoot(ResourceContainer<?> container) {
+		// first remove from roots so we don't accidently resolve from there
+		if (roots.contains(container)) {
+			synchronized(roots) {
+				if (roots.contains(container)) {
+					roots.remove(container);
+				}
+			}
+		}
+		// then remove from the cache if it is in there so we don't serve up stale data
+		if (resources.containsKey(container)) {
+			synchronized(cache) {
+				for (String path : resources.get(container)) {
+					cache.remove(path);
+				}
+			}
+			synchronized(resources) {
+				resources.remove(container);
+			}
+		}
 	}
 }
