@@ -182,4 +182,9 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 			}
 		}
 	}
+
+	public List<ResourceContainer<?>> getRoots() {
+		return roots;
+	}
+	
 }
