@@ -40,7 +40,9 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	private Map<ResourceContainer<?>, Set<String>> resources = new HashMap<ResourceContainer<?>, Set<String>>();
 	
 	public ResourceHandler(ResourceContainer<?> root, String serverPath, boolean useCache) {
-		this.roots.add(root);
+		if (root != null) {
+			this.roots.add(root);
+		}
 		this.serverPath = serverPath;
 		this.useCache = useCache;
 		this.allowEncoding = useCache;
