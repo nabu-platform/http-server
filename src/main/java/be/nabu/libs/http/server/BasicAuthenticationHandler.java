@@ -84,7 +84,7 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 		));
 	}
 	
-	private static class BasicPrincipalImpl implements BasicPrincipal {
+	public static class BasicPrincipalImpl implements BasicPrincipal {
 
 		private static final long serialVersionUID = 1L;
 		private String name;
