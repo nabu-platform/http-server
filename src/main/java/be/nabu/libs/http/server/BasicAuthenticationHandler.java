@@ -90,6 +90,10 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 		private String name;
 		private String password;
 
+		public BasicPrincipalImpl() {
+			// autoconstruct
+		}
+		
 		public BasicPrincipalImpl(String name, String password) {
 			this.name = name;
 			this.password = password;
@@ -103,6 +107,14 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 		@Override
 		public String getPassword() {
 			return password;
+		}
+
+		public void setName(String name) {
+			this.name = name;
+		}
+
+		public void setPassword(String password) {
+			this.password = password;
 		}
 	}
 
