@@ -15,7 +15,7 @@ public class EnsureContentEncodingHandler implements EventHandler<HTTPResponse, 
 	public HTTPResponse handle(HTTPResponse response) {
 		if (response.getContent() != null) {
 			HTTPRequest request = response instanceof LinkableHTTPResponse ? ((LinkableHTTPResponse) response).getRequest() : null;
-			if (request != null && MimeUtils.getHeader("Content-Encoding", response.getContent().getHeaders()) == null) {
+			if (request != null && request.getContent() != null && MimeUtils.getHeader("Content-Encoding", response.getContent().getHeaders()) == null) {
 				List<String> acceptedEncodings = MimeUtils.getAcceptedEncodings(request.getContent().getHeaders());
 				if (acceptedEncodings.contains("gzip")) {
 					response.getContent().setHeader(new MimeHeader("Content-Encoding", "gzip"));
