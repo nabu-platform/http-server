@@ -2,6 +2,8 @@ package be.nabu.libs.http.server;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 import javax.net.ssl.SSLContext;
 
@@ -21,10 +23,19 @@ import be.nabu.utils.io.SSLServerMode;
 public class HTTPServerUtils {
 
 	public static HTTPServer newServer(int port, int processPoolSize, EventDispatcher dispatcher) {
-		return newServer(null, null, port, 10, processPoolSize, dispatcher);
+		return newServer(port, processPoolSize, dispatcher, Executors.defaultThreadFactory());
 	}
+	
+	public static HTTPServer newServer(int port, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory) {
+		return newServer(null, null, port, 10, processPoolSize, dispatcher, threadFactory);
+	}
+	
 	public static HTTPServer newServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher) {
-		return new NIOHTTPServer(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher);
+		return newServer(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher, Executors.defaultThreadFactory());
+	}
+	
+	public static HTTPServer newServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory) {
+		return new NIOHTTPServer(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher, threadFactory);
 	}
 	
 	public static EventHandler<HTTPRequest, Boolean> filterPath(String path) {

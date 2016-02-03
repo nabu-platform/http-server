@@ -1,5 +1,7 @@
 package be.nabu.libs.http.server.nio;
 
+import java.util.concurrent.ThreadFactory;
+
 import javax.net.ssl.SSLContext;
 
 import be.nabu.libs.events.api.EventDispatcher;
@@ -19,15 +21,15 @@ import be.nabu.utils.io.SSLServerMode;
  */
 public class NIOHTTPServer extends NIOServerImpl implements HTTPServer {
 
-	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, HTTPPipelineFactory pipelineFactory, EventDispatcher coreDispatcher) {
-		super(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, pipelineFactory, coreDispatcher);
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, HTTPPipelineFactory pipelineFactory, EventDispatcher coreDispatcher, ThreadFactory threadFactory) {
+		super(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, pipelineFactory, coreDispatcher, threadFactory);
 	}
 	
-	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher) {
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory) {
 		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, new HTTPPipelineFactoryImpl(
 			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), false, dispatcher), 
 			new MemoryMessageDataProvider()
-		), dispatcher);
+		), dispatcher, threadFactory);
 	}
 
 	@Override
