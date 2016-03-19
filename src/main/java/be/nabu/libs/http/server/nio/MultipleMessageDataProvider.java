@@ -15,6 +15,11 @@ import be.nabu.utils.mime.api.Header;
 public class MultipleMessageDataProvider implements MessageDataProvider {
 
 	private List<MessageDataProvider> providers = new ArrayList<MessageDataProvider>();
+	private long maxSize;
+	
+	public MultipleMessageDataProvider(long maxSize) {
+		this.maxSize = maxSize;
+	}
 	
 	public MultipleMessageDataProvider(Collection<MessageDataProvider> providers) {
 		this.providers.addAll(providers);
@@ -35,7 +40,7 @@ public class MultipleMessageDataProvider implements MessageDataProvider {
 				return newResource;
 			}
 		}
-		return (T) new MemoryItem("tmp");
+		return (T) new MemoryItem("tmp", maxSize);
 	}
 
 	public void addProvider(MessageDataProvider...providers) {
