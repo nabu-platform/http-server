@@ -38,7 +38,20 @@ public class MultipleMessageDataProvider implements MessageDataProvider {
 		return (T) new MemoryItem("tmp");
 	}
 
-	public List<MessageDataProvider> getProviders() {
-		return providers;
+	public void addProvider(MessageDataProvider...providers) {
+		// we create a new list to prevent concurrency issues
+		if (providers != null && providers.length > 0) {
+			List<MessageDataProvider> newList = new ArrayList<MessageDataProvider>(this.providers);
+			newList.addAll(Arrays.asList(providers));
+			this.providers = newList;
+		}
+	}
+	
+	public void removeProvider(MessageDataProvider...providers) {
+		if (providers != null && providers.length > 0) {
+			List<MessageDataProvider> newList = new ArrayList<MessageDataProvider>(this.providers);
+			newList.removeAll(Arrays.asList(providers));
+			this.providers = newList;
+		}
 	}
 }
