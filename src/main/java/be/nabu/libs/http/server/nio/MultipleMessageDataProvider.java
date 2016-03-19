@@ -38,4 +38,7 @@ public class MultipleMessageDataProvider implements MessageDataProvider {
 		return (T) new MemoryItem("tmp");
 	}
 
+	public List<MessageDataProvider> getProviders() {
+		return providers;
+	}
 }
