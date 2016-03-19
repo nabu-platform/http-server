@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.http.HTTPException;
+import be.nabu.libs.http.api.server.EnrichingMessageDataProvider;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
@@ -237,6 +238,12 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 		}
 		if (part != null && resource instanceof LocatableResource) {
 			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getURI().toString());
+		}
+		// it is possible that the message provider did something to the resource it managed that altered the part that came back from the parsing
+		// in this can we can enrich it again to be the original part
+		// for example the broker message provider will stream directly to the filesystem but will strip the authorization header
+		if (getDataProvider() instanceof EnrichingMessageDataProvider) {
+			((EnrichingMessageDataProvider) getDataProvider()).enrich(part, method, target, version, headers);
 		}
 	}
 	
