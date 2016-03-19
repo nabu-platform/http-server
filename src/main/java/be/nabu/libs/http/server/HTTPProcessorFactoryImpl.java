@@ -25,10 +25,10 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 		this.route(null, coreDispatcher);
 	}
 	
-	public void route(String hostMatch, EventDispatcher eventDispatcher) {
-		synchronized(dispatchers) {
-			dispatchers.put(hostMatch, eventDispatcher);
-		}
+	public synchronized void route(String hostMatch, EventDispatcher eventDispatcher) {
+		Map<String, EventDispatcher> dispatchers = new HashMap<String, EventDispatcher>(this.dispatchers);
+		dispatchers.put(hostMatch, eventDispatcher);
+		this.dispatchers = dispatchers;
 	}
 	
 	@Override
@@ -94,10 +94,10 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 	}
 
 	@Override
-	public void unroute(String hostMatch) {
-		synchronized(dispatchers) {
-			dispatchers.remove(hostMatch);
-		}
+	public synchronized void unroute(String hostMatch) {
+		Map<String, EventDispatcher> dispatchers = new HashMap<String, EventDispatcher>(this.dispatchers);
+		dispatchers.remove(hostMatch);
+		this.dispatchers = dispatchers;
 	}
 
 }
