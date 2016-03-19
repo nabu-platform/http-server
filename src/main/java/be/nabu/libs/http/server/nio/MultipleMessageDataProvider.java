@@ -3,6 +3,7 @@ package be.nabu.libs.http.server.nio;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 import be.nabu.libs.http.api.server.MessageDataProvider;
@@ -14,6 +15,10 @@ import be.nabu.utils.mime.api.Header;
 public class MultipleMessageDataProvider implements MessageDataProvider {
 
 	private List<MessageDataProvider> providers = new ArrayList<MessageDataProvider>();
+	
+	public MultipleMessageDataProvider(Collection<MessageDataProvider> providers) {
+		this.providers.addAll(providers);
+	}
 	
 	public MultipleMessageDataProvider(MessageDataProvider...providers) {
 		if (providers != null && providers.length > 0) {
