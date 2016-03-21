@@ -242,7 +242,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 		// it is possible that the message provider did something to the resource it managed that altered the part that came back from the parsing
 		// in this can we can enrich it again to be the original part
 		// for example the broker message provider will stream directly to the filesystem but will strip the authorization header
-		if (getDataProvider() instanceof EnrichingMessageDataProvider) {
+		if (part != null && getDataProvider() instanceof EnrichingMessageDataProvider) {
 			((EnrichingMessageDataProvider) getDataProvider()).enrich(part, method, target, version, headers);
 		}
 	}

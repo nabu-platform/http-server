@@ -74,11 +74,11 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 				}
 			}
 		}
-		return required ? newAuthenticationRequiredResponse(realm) : null;
+		return required ? newAuthenticationRequiredResponse(request, realm) : null;
 	}
 	
-	public static HTTPResponse newAuthenticationRequiredResponse(String realm) {
-		return new DefaultHTTPResponse(401, HTTPCodes.getMessage(401), new PlainMimeEmptyPart(null, 
+	public static HTTPResponse newAuthenticationRequiredResponse(HTTPRequest request, String realm) {
+		return new DefaultHTTPResponse(request, 401, HTTPCodes.getMessage(401), new PlainMimeEmptyPart(null, 
 			new MimeHeader("Content-Length", "0"),
 			new MimeHeader("WWW-Authenticate", "Basic realm=\"" + realm + "\"")
 		));
