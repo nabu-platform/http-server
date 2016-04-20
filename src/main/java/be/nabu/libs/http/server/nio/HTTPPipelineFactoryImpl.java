@@ -20,6 +20,8 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 
 	private MessageDataProvider messageDataProvider;
 	private HTTPProcessorFactory processorFactory;
+	private long readTimeout, writeTimeout;
+	private int requestLimit, responseLimit;
 
 	public HTTPPipelineFactoryImpl(HTTPProcessorFactory processorFactory, MessageDataProvider messageDataProvider) {
 		this.processorFactory = processorFactory;
@@ -28,7 +30,7 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 	
 	@Override
 	public Pipeline newPipeline(NIOServer server, SelectionKey key) throws IOException {
-		return new MessagePipelineImpl<HTTPRequest, HTTPResponse>(
+		MessagePipelineImpl<HTTPRequest, HTTPResponse> pipeline = new MessagePipelineImpl<HTTPRequest, HTTPResponse>(
 			server,
 			key,
 			new HTTPRequestParserFactory(messageDataProvider),
@@ -47,6 +49,11 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 			},
 			processorFactory.getExceptionFormatter()
 		);
+		pipeline.setReadTimeout(readTimeout);
+		pipeline.setWriteTimeout(writeTimeout);
+		pipeline.setRequestLimit(requestLimit);
+		pipeline.setResponseLimit(responseLimit);
+		return pipeline;
 	}
 
 	public HTTPProcessorFactory getProcessorFactory() {
@@ -59,5 +66,41 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 	
 	public void setMessageDataProvider(MessageDataProvider messageDataProvider) {
 		this.messageDataProvider = messageDataProvider;
+	}
+
+	@Override
+	public long getReadTimeout() {
+		return readTimeout;
+	}
+	@Override
+	public void setReadTimeout(long readTimeout) {
+		this.readTimeout = readTimeout;
+	}
+
+	@Override
+	public long getWriteTimeout() {
+		return writeTimeout;
+	}
+	@Override
+	public void setWriteTimeout(long writeTimeout) {
+		this.writeTimeout = writeTimeout;
+	}
+
+	@Override
+	public int getRequestLimit() {
+		return requestLimit;
+	}
+	@Override
+	public void setRequestLimit(int requestLimit) {
+		this.requestLimit = requestLimit;
+	}
+
+	@Override
+	public int getResponseLimit() {
+		return responseLimit;
+	}
+	@Override
+	public void setResponseLimit(int responseLimit) {
+		this.responseLimit = responseLimit;
 	}
 }
