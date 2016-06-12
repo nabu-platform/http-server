@@ -12,7 +12,9 @@ import be.nabu.libs.http.core.HTTPUtils;
 
 /**
  * This will either copy the token to the session (if valid)
+ * Not sure if we want this, marking as deprecated
  */
+@Deprecated
 public class SessionTokenHandler implements EventHandler<HTTPRequest, HTTPResponse> {
 	
 	private SessionResolver sessionResolver;

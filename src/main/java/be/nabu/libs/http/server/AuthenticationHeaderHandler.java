@@ -12,7 +12,10 @@ import be.nabu.libs.http.core.HTTPUtils;
 /**
  * This sets the authentication header if a valid token is found
  * Alternatively it unsets the authentication header if an invalid token is found
+ * 
+ * Not sure if we want this, marking as deprecated
  */
+@Deprecated
 public class AuthenticationHeaderHandler implements EventHandler<HTTPRequest, HTTPResponse> {
 	
 	private TokenValidator tokenValidator;
