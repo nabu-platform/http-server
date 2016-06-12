@@ -55,6 +55,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(sourceContext.getSocket().getPort()).toString());
+				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getSocket().getLocalPort()).toString());
 			}
 		}
 		HTTPResponse response = super.process(securityContext, sourceContext, request);
