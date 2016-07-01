@@ -28,6 +28,7 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 		}
 		
 		PullableMimeFormatter formatter = new PullableMimeFormatter();
+		formatter.setOptimizeCompression(true);
 		formatter.setIncludeMainContentTrailingLineFeeds(false);
 		formatter.setAllowBinary(true);
 		try {
