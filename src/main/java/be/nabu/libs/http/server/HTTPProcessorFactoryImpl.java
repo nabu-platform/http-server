@@ -1,6 +1,8 @@
 package be.nabu.libs.http.server;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import be.nabu.libs.events.api.EventDispatcher;
@@ -16,6 +18,7 @@ import be.nabu.utils.mime.impl.MimeUtils;
 public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 
 	private Map<String, EventDispatcher> dispatchers = new HashMap<String, EventDispatcher>();
+	private List<String> hostsCache;
 	private ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter;
 	private boolean isProxied;
 
@@ -29,6 +32,7 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 		Map<String, EventDispatcher> dispatchers = new HashMap<String, EventDispatcher>(this.dispatchers);
 		dispatchers.put(hostMatch, eventDispatcher);
 		this.dispatchers = dispatchers;
+		this.hostsCache = new ArrayList<String>(this.dispatchers.keySet());
 	}
 	
 	@Override
@@ -61,7 +65,7 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 			if (index > 0) {
 				host = host.substring(0, index);
 			}
-			for (String key : dispatchers.keySet()) {
+			for (String key : hostsCache) {
 				if (key != null) {
 					if (host.matches(key)) {
 						if (closestRoute == null || key.length() > closestRoute.length()) {
