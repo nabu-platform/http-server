@@ -51,9 +51,16 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 					}
 				}
 				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocket().getRemoteSocketAddress());
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
+				if (remoteSocketAddress != null) {
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
+				}
+				else {
+					request.getContent().removeHeader(ServerHeader.REMOTE_IS_LOCAL.name());
+					request.getContent().removeHeader(ServerHeader.REMOTE_ADDRESS.name());
+					request.getContent().removeHeader(ServerHeader.REMOTE_HOST.name());
+				}
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(sourceContext.getSocket().getPort()).toString());
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getSocket().getLocalPort()).toString());
 			}
