@@ -50,19 +50,19 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 						request.getContent().removeHeader(header.getName());
 					}
 				}
-				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocket().getRemoteSocketAddress());
+				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocketAddress());
 				if (remoteSocketAddress != null) {
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(remoteSocketAddress.getPort()).toString());
 				}
 				else {
 					request.getContent().removeHeader(ServerHeader.REMOTE_IS_LOCAL.name());
 					request.getContent().removeHeader(ServerHeader.REMOTE_ADDRESS.name());
 					request.getContent().removeHeader(ServerHeader.REMOTE_HOST.name());
 				}
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(sourceContext.getSocket().getPort()).toString());
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getSocket().getLocalPort()).toString());
+				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getLocalPort()).toString());
 			}
 		}
 		HTTPResponse response = super.process(securityContext, sourceContext, request);
