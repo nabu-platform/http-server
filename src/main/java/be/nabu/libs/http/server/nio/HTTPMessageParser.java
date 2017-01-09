@@ -46,7 +46,7 @@ import be.nabu.utils.mime.util.ChunkedWritableByteContainer;
  */
 public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 
-	public static final int COPY_SIZE = 4096;
+	public static final int COPY_SIZE = 8192;
 	
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	
@@ -64,14 +64,20 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	private long totalRead, totalChunkRead;
 	private int maxInitialLineLength = 4096;
 	private int maxHeaderSize = 8192;
-	private int maxChunkSize = 8192;
+	private int maxChunkSize = 81920;
 	private Long contentLength;
 	private String method;
 	private String target;
+	private Integer code;
+	private String message;
 	private double version;
 	
 	private boolean isClosed;
 	private boolean isDone;
+	/**
+	 * Whether we are parsing a response or a request, default is a request
+	 */
+	private boolean isResponse;
 	
 	/**
 	 * When writing to the backend, do we want to include the headers?
@@ -81,7 +87,12 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	private boolean includeHeaders = true;
 	
 	public HTTPMessageParser(MessageDataProvider dataProvider) {
+		this(dataProvider, false);
+	}
+	
+	public HTTPMessageParser(MessageDataProvider dataProvider, boolean isResponse) {
 		this.dataProvider = dataProvider;
+		this.isResponse = isResponse;
 		initialBuffer = new DynamicByteBuffer();
 		initialBuffer.mark();
 	}
@@ -105,16 +116,31 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 			}
 			else {
 				initialBuffer.remark();
-				int firstSpaceIndex = request.indexOf(' ');
-				int httpIndex = request.lastIndexOf("HTTP/");
-				
-				if (firstSpaceIndex < 0 || httpIndex < 0) {
-					throw new ParseException("Could not parse request line: " + request, 0);
+				if (isResponse) {
+					if (!request.startsWith("HTTP/")) {
+						throw new ParseException("Could not parse response line: " + request, 0);
+					}
+					int firstSpaceIndex = request.indexOf(' ');
+					int secondSpaceIndex = request.indexOf(' ', firstSpaceIndex + 1);
+					if (firstSpaceIndex < 0 || secondSpaceIndex < 0) {
+						throw new ParseException("Could not parse response line: " + request, 0);
+					}
+					version = new Double(request.substring(0, firstSpaceIndex).replaceFirst("HTTP/", "").trim());
+					code = new Integer(request.substring(firstSpaceIndex + 1, secondSpaceIndex));
+					message = request.substring(secondSpaceIndex + 1);
 				}
-				method = request.substring(0, firstSpaceIndex);
-				target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
-				version = new Double(request.substring(httpIndex).replaceFirst("HTTP/", "").trim());
-				logger.debug("Request: {}", request);
+				else {
+					int firstSpaceIndex = request.indexOf(' ');
+					int httpIndex = request.lastIndexOf("HTTP/");
+					
+					if (firstSpaceIndex < 0 || httpIndex < 0) {
+						throw new ParseException("Could not parse request line: " + request, 0);
+					}
+					method = request.substring(0, firstSpaceIndex);
+					target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
+					version = new Double(request.substring(httpIndex).replaceFirst("HTTP/", "").trim());
+					logger.debug("Request: {}", request);
+				}
 			}
 		}
 		if (request != null && headers == null && !isDone()) {
@@ -290,6 +316,14 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 
 	public double getVersion() {
 		return version;
+	}
+	
+	public String getMessageText() {
+		return message;
+	}
+	
+	public Integer getCode() {
+		return code;
 	}
 
 	@Override
