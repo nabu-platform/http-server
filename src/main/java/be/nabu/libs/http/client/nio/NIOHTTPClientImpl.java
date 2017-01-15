@@ -27,22 +27,21 @@ import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
-import be.nabu.libs.http.api.client.NonBlockingHTTPClient;
+import be.nabu.libs.http.api.client.NIOHTTPClient;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.client.nio.handlers.HandlerFilter;
 import be.nabu.libs.http.client.nio.handlers.RedirectFollower;
 import be.nabu.libs.http.client.nio.handlers.ServerAuthenticator;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.api.MessagePipeline;
-import be.nabu.libs.nio.api.NIOClient;
 import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.PipelineWithMetaData;
 import be.nabu.libs.nio.impl.NIOClientImpl;
 import be.nabu.utils.mime.impl.FormatException;
 
-public class NIOHTTPClient implements NonBlockingHTTPClient {
+public class NIOHTTPClientImpl implements NIOHTTPClient {
 
-	private NIOClient client;
+	private NIOClientImpl client;
 	private int maxConnectionsPerServer;
 	private Map<HTTPRequest, HTTPResponseFuture> futures = Collections.synchronizedMap(new WeakHashMap<HTTPRequest, HTTPResponseFuture>());
 	private HTTPClientPipelineFactory pipelineFactory;
@@ -51,7 +50,7 @@ public class NIOHTTPClient implements NonBlockingHTTPClient {
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
 	
-	public NIOHTTPClient(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, ThreadFactory threadFactory) {
+	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, ThreadFactory threadFactory) {
 		this.maxConnectionsPerServer = maxConnectionsPerServer;
 		this.dispatcher = dispatcher;
 		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider);
@@ -270,5 +269,12 @@ public class NIOHTTPClient implements NonBlockingHTTPClient {
 	@Override
 	public EventDispatcher getDispatcher() {
 		return dispatcher;
+	}
+
+	@Override
+	public void close() throws IOException {
+		if (client.isStarted()) {
+			client.stop();
+		}
 	}
 }

@@ -15,7 +15,7 @@ import be.nabu.libs.events.api.ResponseHandler;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.LinkableHTTPResponse;
-import be.nabu.libs.http.client.nio.NIOHTTPClient.HTTPResponseFuture;
+import be.nabu.libs.http.client.nio.NIOHTTPClientImpl.HTTPResponseFuture;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.ExceptionFormatter;
@@ -30,9 +30,9 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 	private CookieHandler cookieHandler;
 	private boolean secure;
 	private Map<HTTPRequest, HTTPResponseFuture> futures;
-	private NIOHTTPClient client;
+	private NIOHTTPClientImpl client;
 
-	public HTTPResponseProcessor(NIOHTTPClient client, CookieHandler cookieHandler, boolean secure, EventDispatcher dispatcher, ExceptionFormatter<HTTPResponse, HTTPRequest> exceptionFormatter, Map<HTTPRequest, HTTPResponseFuture> futures) {
+	public HTTPResponseProcessor(NIOHTTPClientImpl client, CookieHandler cookieHandler, boolean secure, EventDispatcher dispatcher, ExceptionFormatter<HTTPResponse, HTTPRequest> exceptionFormatter, Map<HTTPRequest, HTTPResponseFuture> futures) {
 		super(HTTPResponse.class, HTTPRequest.class, dispatcher, exceptionFormatter, false);
 		this.client = client;
 		this.cookieHandler = cookieHandler;
@@ -71,11 +71,11 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 					futures.remove(request);
 				}
 				URI newUri = HTTPUtils.getURI(retryRequest, secure);
-				String newHost = NIOHTTPClient.getHost(newUri);
-				int newPort = NIOHTTPClient.getPort(newUri);
+				String newHost = NIOHTTPClientImpl.getHost(newUri);
+				int newPort = NIOHTTPClientImpl.getPort(newUri);
 				if (originalUri != null) {
-					String originalHost = NIOHTTPClient.getHost(originalUri);
-					int originalPort = NIOHTTPClient.getPort(originalUri);
+					String originalHost = NIOHTTPClientImpl.getHost(originalUri);
+					int originalPort = NIOHTTPClientImpl.getPort(originalUri);
 					if (originalHost.equals(newHost) && originalPort == newPort) {
 						return retryRequest;
 					}

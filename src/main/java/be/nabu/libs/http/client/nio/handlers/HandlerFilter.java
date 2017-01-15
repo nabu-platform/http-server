@@ -6,7 +6,7 @@ import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.LinkableHTTPResponse;
-import be.nabu.libs.http.client.nio.NIOHTTPClient;
+import be.nabu.libs.http.client.nio.NIOHTTPClientImpl;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.impl.MessagePipelineImpl;
@@ -30,8 +30,8 @@ public class HandlerFilter implements EventHandler<HTTPResponse, Boolean> {
 		try {
 			boolean secure = ((MessagePipelineImpl<?, ?>) PipelineUtils.getPipeline()).isUseSsl();
 			URI uri = HTTPUtils.getURI(request, secure);
-			String host = NIOHTTPClient.getHost(uri);
-			int port = NIOHTTPClient.getPort(uri);
+			String host = NIOHTTPClientImpl.getHost(uri);
+			int port = NIOHTTPClientImpl.getPort(uri);
 			return !host.equals(this.host) || port != this.port;
 		}
 		catch (Exception e) {

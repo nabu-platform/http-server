@@ -16,7 +16,7 @@ import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.MessageDataProvider;
-import be.nabu.libs.http.client.nio.NIOHTTPClient.HTTPResponseFuture;
+import be.nabu.libs.http.client.nio.NIOHTTPClientImpl.HTTPResponseFuture;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.api.KeepAliveDecider;
 import be.nabu.libs.nio.api.NIOServer;
@@ -33,9 +33,9 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 	private EventDispatcher dispatcher;
 	private CookieHandler cookieHandler;
 	private Map<HTTPRequest, HTTPResponseFuture> futures;
-	private NIOHTTPClient client;
+	private NIOHTTPClientImpl client;
 
-	public HTTPClientPipelineFactory(NIOHTTPClient client, CookieHandler cookieHandler, Map<HTTPRequest, HTTPResponseFuture> futures, EventDispatcher dispatcher, MessageDataProvider messageDataProvider) {
+	public HTTPClientPipelineFactory(NIOHTTPClientImpl client, CookieHandler cookieHandler, Map<HTTPRequest, HTTPResponseFuture> futures, EventDispatcher dispatcher, MessageDataProvider messageDataProvider) {
 		this.client = client;
 		this.cookieHandler = cookieHandler;
 		this.futures = futures;

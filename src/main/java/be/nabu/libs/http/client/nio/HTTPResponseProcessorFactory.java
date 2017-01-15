@@ -6,7 +6,7 @@ import java.util.Map;
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
-import be.nabu.libs.http.client.nio.NIOHTTPClient.HTTPResponseFuture;
+import be.nabu.libs.http.client.nio.NIOHTTPClientImpl.HTTPResponseFuture;
 import be.nabu.libs.nio.api.ExceptionFormatter;
 import be.nabu.libs.nio.api.MessageProcessor;
 import be.nabu.libs.nio.api.MessageProcessorFactory;
@@ -18,9 +18,9 @@ public class HTTPResponseProcessorFactory implements MessageProcessorFactory<HTT
 	private CookieHandler cookieHandler;
 	private boolean secure;
 	private Map<HTTPRequest, HTTPResponseFuture> futures;
-	private NIOHTTPClient client;
+	private NIOHTTPClientImpl client;
 	
-	public HTTPResponseProcessorFactory(NIOHTTPClient client, CookieHandler cookieHandler, boolean secure, EventDispatcher dispatcher, ExceptionFormatter<HTTPResponse, HTTPRequest> exceptionFormatter, Map<HTTPRequest, HTTPResponseFuture> futures) {
+	public HTTPResponseProcessorFactory(NIOHTTPClientImpl client, CookieHandler cookieHandler, boolean secure, EventDispatcher dispatcher, ExceptionFormatter<HTTPResponse, HTTPRequest> exceptionFormatter, Map<HTTPRequest, HTTPResponseFuture> futures) {
 		this.client = client;
 		this.cookieHandler = cookieHandler;
 		this.secure = secure;

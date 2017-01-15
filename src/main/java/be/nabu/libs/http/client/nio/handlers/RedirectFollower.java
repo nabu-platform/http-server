@@ -6,7 +6,7 @@ import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.LinkableHTTPResponse;
-import be.nabu.libs.http.client.nio.NIOHTTPClient;
+import be.nabu.libs.http.client.nio.NIOHTTPClientImpl;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.impl.MessagePipelineImpl;
@@ -15,10 +15,10 @@ import be.nabu.utils.mime.impl.MimeUtils;
 
 public class RedirectFollower implements EventHandler<HTTPResponse, HTTPRequest> {
 
-	private NIOHTTPClient client;
+	private NIOHTTPClientImpl client;
 	private int redirectCount;
 
-	public RedirectFollower(NIOHTTPClient client, int redirectCount) {
+	public RedirectFollower(NIOHTTPClientImpl client, int redirectCount) {
 		this.client = client;
 		this.redirectCount = redirectCount;
 	}
@@ -46,8 +46,8 @@ public class RedirectFollower implements EventHandler<HTTPResponse, HTTPRequest>
 							if (newTarget.getAuthority() == null) {
 								newTarget = HTTPUtils.getURI(request, secure).resolve(newTarget);
 							}
-							String host = NIOHTTPClient.getHost(newTarget);
-							int port = NIOHTTPClient.getPort(newTarget);
+							String host = NIOHTTPClientImpl.getHost(newTarget);
+							int port = NIOHTTPClientImpl.getPort(newTarget);
 							client.setSecure(host, port, secure);
 							
 							HTTPRequest newRequest = HTTPUtils.redirect(request, newTarget, true);
