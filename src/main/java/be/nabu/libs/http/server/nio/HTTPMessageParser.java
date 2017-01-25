@@ -160,7 +160,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 			}
 			else {
 				ReadableContainer<CharBuffer> data = new ReadableStraightByteToCharContainer(initialBuffer);
-				headers = MimeUtils.readHeaders(data, false);
+				headers = MimeUtils.readHeaders(data, true);
 				// if we did not find the headers in the allotted space, throw an exception
 				if (headers == null && limitedBuffer.remainingSpace() == 0) {
 					throw new ParseException("No headers found within the size limit: " + maxHeaderSize + " bytes", 1);
