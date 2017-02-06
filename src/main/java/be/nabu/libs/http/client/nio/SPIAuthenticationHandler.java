@@ -13,6 +13,12 @@ import be.nabu.libs.http.api.client.ClientAuthenticationHandler;
 public class SPIAuthenticationHandler implements ClientAuthenticationHandler {
 
 	private List<ClientAuthenticationHandler> handlers;
+	
+	public static SPIAuthenticationHandler instance = new SPIAuthenticationHandler();
+	
+	public static SPIAuthenticationHandler getInstance() {
+		return instance;
+	}
 
 	private List<ClientAuthenticationHandler> getHandlers() {
 		if (handlers == null) {

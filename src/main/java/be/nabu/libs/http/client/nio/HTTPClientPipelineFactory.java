@@ -76,7 +76,9 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 			},
 			exceptionFormatter,
 			true,
-			secure
+			secure,
+			// tcp max is 65535, ethernet is 1500, allow space for ssl, read estimates of 40kb per packet, let's give it some more
+			1400
 		);
 		pending.put(pipeline, queue);
 		return pipeline;
