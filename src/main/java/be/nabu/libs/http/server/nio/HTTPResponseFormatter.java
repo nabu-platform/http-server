@@ -28,6 +28,8 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 		}
 		
 		PullableMimeFormatter formatter = new PullableMimeFormatter();
+		// internet explorer does not support header folding
+		formatter.setFoldHeader(false);
 		formatter.setOptimizeCompression(true);
 		formatter.setIncludeMainContentTrailingLineFeeds(false);
 		formatter.setAllowBinary(true);
