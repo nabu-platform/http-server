@@ -22,6 +22,9 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 	private HTTPProcessorFactory processorFactory;
 	private long readTimeout, writeTimeout;
 	private int requestLimit, responseLimit;
+	private Integer maxInitialLineLength;
+	private Integer maxHeaderSize;
+	private Integer maxChunkSize;
 
 	public HTTPPipelineFactoryImpl(HTTPProcessorFactory processorFactory, MessageDataProvider messageDataProvider) {
 		this.processorFactory = processorFactory;
@@ -30,10 +33,14 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 	
 	@Override
 	public Pipeline newPipeline(NIOServer server, SelectionKey key) throws IOException {
+		HTTPRequestParserFactory requestParserFactory = new HTTPRequestParserFactory(messageDataProvider);
+		requestParserFactory.setMaxChunkSize(maxChunkSize);
+		requestParserFactory.setMaxHeaderSize(maxHeaderSize);
+		requestParserFactory.setMaxInitialLineLength(maxInitialLineLength);
 		MessagePipelineImpl<HTTPRequest, HTTPResponse> pipeline = new MessagePipelineImpl<HTTPRequest, HTTPResponse>(
 			server,
 			key,
-			new HTTPRequestParserFactory(messageDataProvider),
+			requestParserFactory,
 			new MessageFormatterFactory<HTTPResponse>() {
 				@Override
 				public MessageFormatter<HTTPResponse> newMessageFormatter() {
@@ -103,4 +110,29 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 	public void setResponseLimit(int responseLimit) {
 		this.responseLimit = responseLimit;
 	}
+
+	public Integer getMaxInitialLineLength() {
+		return maxInitialLineLength;
+	}
+
+	public void setMaxInitialLineLength(Integer maxInitialLineLength) {
+		this.maxInitialLineLength = maxInitialLineLength;
+	}
+
+	public Integer getMaxHeaderSize() {
+		return maxHeaderSize;
+	}
+
+	public void setMaxHeaderSize(Integer maxHeaderSize) {
+		this.maxHeaderSize = maxHeaderSize;
+	}
+
+	public Integer getMaxChunkSize() {
+		return maxChunkSize;
+	}
+
+	public void setMaxChunkSize(Integer maxChunkSize) {
+		this.maxChunkSize = maxChunkSize;
+	}
+	
 }

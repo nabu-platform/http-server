@@ -12,6 +12,10 @@ public class HTTPResponseParserFactory implements MessageParserFactory<HTTPRespo
 
 	private MessageDataProvider provider;
 	private Deque<HTTPRequest> queue;
+	
+	private Integer maxInitialLineLength;
+	private Integer maxHeaderSize;
+	private Integer maxChunkSize;
 
 	public HTTPResponseParserFactory(MessageDataProvider provider, Deque<HTTPRequest> queue) {
 		this.provider = provider;
@@ -20,7 +24,42 @@ public class HTTPResponseParserFactory implements MessageParserFactory<HTTPRespo
 	
 	@Override
 	public MessageParser<HTTPResponse> newMessageParser() {
-		return new HTTPResponseParser(provider, queue);
+		HTTPResponseParser parser = new HTTPResponseParser(provider, queue);
+		if (maxInitialLineLength != null) {
+			parser.getMessageFramer().setMaxInitialLineLength(maxInitialLineLength);
+		}
+		if (maxHeaderSize != null) {
+			parser.getMessageFramer().setMaxHeaderSize(maxHeaderSize);
+		}
+		if (maxChunkSize != null) {
+			parser.getMessageFramer().setMaxChunkSize(maxChunkSize);
+		}
+		return parser;
 	}
+
+	public Integer getMaxInitialLineLength() {
+		return maxInitialLineLength;
+	}
+
+	public void setMaxInitialLineLength(Integer maxInitialLineLength) {
+		this.maxInitialLineLength = maxInitialLineLength;
+	}
+
+	public Integer getMaxHeaderSize() {
+		return maxHeaderSize;
+	}
+
+	public void setMaxHeaderSize(Integer maxHeaderSize) {
+		this.maxHeaderSize = maxHeaderSize;
+	}
+
+	public Integer getMaxChunkSize() {
+		return maxChunkSize;
+	}
+
+	public void setMaxChunkSize(Integer maxChunkSize) {
+		this.maxChunkSize = maxChunkSize;
+	}
+	
 
 }
