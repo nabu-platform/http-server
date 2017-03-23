@@ -151,12 +151,17 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 			
 			// it is possible to have a request without headers
 			long peek = initialBuffer.peek(IOUtils.wrap(pair, false));
-			if (allowWithoutHeaders(method) && ((peek == 2 && pair[0] == '\r' && pair[1] == '\n') || (peek >= 1 && pair[0] == '\n'))) {
-				isDone = true;
-				// skip past the linefeed
-				initialBuffer.skip(pair[0] == '\r' ? 2 : 1);
-				// push everything else back
-				content.pushback(initialBuffer);
+			if ((peek == 2 && pair[0] == '\r' && pair[1] == '\n') || (peek >= 1 && pair[0] == '\n')) {
+				if (allowWithoutHeaders(method)) {
+					isDone = true;
+					// skip past the linefeed
+					initialBuffer.skip(pair[0] == '\r' ? 2 : 1);
+					// push everything else back
+					content.pushback(initialBuffer);
+				}
+				else {
+					throw new ParseException("No headers found for the method '" + method + "'", 3);
+				}
 			}
 			else {
 				ReadableContainer<CharBuffer> data = new ReadableStraightByteToCharContainer(initialBuffer);
@@ -213,6 +218,13 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				if (chunked != null) {
 					writable = new ChunkedWritableByteContainer(writable, false);
 				}
+			}
+			// @2017-03-22: the loop that follows assumes that the initial buffer contains at most contentLength amount of data, this is true if the headers are sent separately which is almost always the case (99.999% of the time)
+			// if however you send it as one tcp packet and there is more data, the loop breaks due to bad design at line 231 (should use local var) and 255 (don't write the entire buffer but a limited version)
+			// this almost never occurs but if it does, the message never gets finished and the selection key will trigger indefinitely for the EOS to be read!! quick fix is the following if
+			// proper refactor needed at some point but it is complex code so needs proper testing
+			if (contentLength != null && initialBuffer.remainingData() > contentLength) {
+				content.pushback(initialBuffer);
 			}
 			long read = 0;
 			while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
