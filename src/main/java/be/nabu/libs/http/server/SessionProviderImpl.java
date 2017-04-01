@@ -4,6 +4,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 
 import be.nabu.libs.http.api.server.ListableSessionProvider;
@@ -113,5 +114,18 @@ public class SessionProviderImpl implements ListableSessionProvider {
 	public Iterator<Session> iterator() {
 		Iterator iterator = sessions.values().iterator();
 		return iterator;
+	}
+
+	@Override
+	public void prune() {
+		synchronized(sessions) {
+			Iterator<SessionImpl> iterator = sessions.values().iterator();
+			while (iterator.hasNext()) {
+				SessionImpl session = iterator.next();
+				if (sessionTimeout > 0 && new Date().getTime() - session.getLastAccessed().getTime() >= sessionTimeout) {
+					iterator.remove();
+				}
+			}
+		}
 	}
 }
