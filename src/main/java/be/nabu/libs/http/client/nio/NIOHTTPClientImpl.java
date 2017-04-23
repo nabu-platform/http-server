@@ -29,8 +29,8 @@ import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.client.NIOHTTPClient;
 import be.nabu.libs.http.api.server.MessageDataProvider;
-import be.nabu.libs.http.client.nio.handlers.HandlerFilter;
 import be.nabu.libs.http.client.nio.handlers.RedirectFollower;
+import be.nabu.libs.http.client.nio.handlers.RequestFilter;
 import be.nabu.libs.http.client.nio.handlers.ServerAuthenticator;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.api.MessagePipeline;
@@ -50,12 +50,19 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
 	
-	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, ThreadFactory threadFactory) {
+	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, final ThreadFactory threadFactory) {
 		this.maxConnectionsPerServer = maxConnectionsPerServer;
 		this.dispatcher = dispatcher;
 		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider);
-		this.client = new NIOClientImpl(sslContext, ioPoolSize, processPoolSize, pipelineFactory, dispatcher, threadFactory);
-		new Thread(new Runnable() {
+		this.client = new NIOClientImpl(sslContext, ioPoolSize, processPoolSize, pipelineFactory, dispatcher, new ThreadFactory() {
+			@Override
+			public Thread newThread(Runnable r) {
+				Thread thread = threadFactory.newThread(r);
+				thread.setDaemon(true);
+				return thread;
+			}
+		});
+		Thread thread = new Thread(new Runnable() {
 			public void run() {
 				try {
 					client.start();
@@ -64,7 +71,9 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 					throw new RuntimeException(e);
 				}
 			}
-		}).start();
+		});
+		thread.setDaemon(true);
+		thread.start();
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -241,13 +250,18 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		EventSubscription<HTTPResponse, HTTPRequest> redirectSubscription = null;
 		if (followRedirects) {
 			redirectSubscription = getDispatcher().subscribe(HTTPResponse.class, new RedirectFollower(this, 50));
-			redirectSubscription.filter(new HandlerFilter(host, port));
+//			redirectSubscription.filter(new HandlerFilter(host, port));
+			// this works splendidly as long as the request itself is rewritten, not a new request is made
+			// at that point we would need linkable requests or something
+			// the alternative is the filter we used above but that can be too broad
+			redirectSubscription.filter(new RequestFilter(request));
 		}
 		// if we have a principal, set a handler
 		EventSubscription<HTTPResponse, HTTPRequest> authenticateSubscription = null;
 		if (principal != null) {
 			authenticateSubscription = getDispatcher().subscribe(HTTPResponse.class, new ServerAuthenticator(principal, new SPIAuthenticationHandler()));
-			authenticateSubscription.filter(new HandlerFilter(host, port));
+//			authenticateSubscription.filter(new HandlerFilter(host, port));
+			authenticateSubscription.filter(new RequestFilter(request));
 		}
 		Future<HTTPResponse> call = call(request, secure);
 		try {
@@ -266,7 +280,6 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		}
 	}
 
-	@Override
 	public EventDispatcher getDispatcher() {
 		return dispatcher;
 	}
