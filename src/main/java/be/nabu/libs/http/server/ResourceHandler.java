@@ -72,7 +72,7 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 				MimeHeader cacheHeader = new MimeHeader("Cache-Control", "public");
 				// if it has not been modified, send back a 304
 				if (ifModifiedSince != null && !ifModifiedSince.after(((TimestampedResource) resource).getLastModified())) {
-					return new DefaultHTTPResponse(304, HTTPCodes.getMessage(304), new PlainMimeEmptyPart(null, 
+					return new DefaultHTTPResponse(request, 304, HTTPCodes.getMessage(304), new PlainMimeEmptyPart(null, 
 						new MimeHeader("Content-Length", "0"), 
 						cacheHeader,
 						lastModifiedHeader,

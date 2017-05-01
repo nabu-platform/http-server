@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -158,6 +159,8 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					initialBuffer.skip(pair[0] == '\r' ? 2 : 1);
 					// push everything else back
 					content.pushback(initialBuffer);
+					// set an empty part nonetheless for additional metadata later on
+					part = new PlainMimeEmptyPart(null);
 				}
 				else {
 					throw new ParseException("No headers found for the method '" + method + "'", 3);
@@ -176,7 +179,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				}
 			}
 		}
-		if (headers != null && !isDone()) {
+		parse: if (headers != null && !isDone()) {
 			if (resource == null) {
 				contentLength = MimeUtils.getContentLength(headers);
 				if (contentLength == null) {
@@ -186,7 +189,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 						isDone = true;
 						part = new PlainMimeEmptyPart(null, headers);
 						content.pushback(initialBuffer);
-						return;
+						break parse;
 					}
 					else if (!"chunked".equals(transferEncoding)) {
 						// throw the exception code for length required
@@ -199,7 +202,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					isDone = true;
 					part = new PlainMimeEmptyPart(null, headers);
 					content.pushback(initialBuffer);
-					return;
+					break parse;
 				}
 				resource = getDataProvider().newResource(method, target, version, headers);
 				if (resource == null) {
@@ -277,6 +280,15 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 		if (part != null && resource instanceof LocatableResource) {
 			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getURI().toString());
 		}
+		else if (part != null) {
+			part.removeHeader(ServerHeader.RESOURCE_URI.getName());
+		}
+		
+		// set the timestamp that it was received
+		if (part != null) {
+			part.setHeader(new MimeHeader(ServerHeader.REQUEST_RECEIVED.getName(), HTTPUtils.formatDate(new Date())));
+		}
+		
 		// it is possible that the message provider did something to the resource it managed that altered the part that came back from the parsing
 		// in this can we can enrich it again to be the original part
 		// for example the broker message provider will stream directly to the filesystem but will strip the authorization header
