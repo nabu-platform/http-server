@@ -46,6 +46,8 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	private Map<HTTPRequest, HTTPResponseFuture> futures = Collections.synchronizedMap(new WeakHashMap<HTTPRequest, HTTPResponseFuture>());
 	private HTTPClientPipelineFactory pipelineFactory;
 	private Logger logger = LoggerFactory.getLogger(getClass());
+	// default request timeout is 5 minutes
+	private long requestTimeout = 1000l*60*5;
 	
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
@@ -100,6 +102,9 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 			future = new HTTPResponseFuture();
 			futures.put(request, future);
 		}
+		// make sure we get rid of stale connections first
+		client.pruneConnections();
+		
 		HTTPClientPipelineFactory factory = ((HTTPClientPipelineFactory) client.getPipelineFactory());
 		for (Pipeline possible : new ArrayList<Pipeline>(client.getPipelines())) {
 			Map<String, Object> metaData = ((PipelineWithMetaData) possible).getMetaData();
@@ -265,7 +270,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		}
 		Future<HTTPResponse> call = call(request, secure);
 		try {
-			return call.get();
+			return requestTimeout <= 0 ? call.get() : call.get(requestTimeout, TimeUnit.MILLISECONDS);
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);
@@ -290,4 +295,13 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 			client.stop();
 		}
 	}
+
+	public long getRequestTimeout() {
+		return requestTimeout;
+	}
+
+	public void setRequestTimeout(long requestTimeout) {
+		this.requestTimeout = requestTimeout;
+	}
+	
 }
