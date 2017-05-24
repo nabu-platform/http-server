@@ -138,7 +138,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 						throw new ParseException("Could not parse request line: " + request, 0);
 					}
 					method = request.substring(0, firstSpaceIndex);
-					target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
+					// @2017-05-14: not a clue why the replace is there
+//					target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
+					target = request.substring(firstSpaceIndex + 1, httpIndex).trim();
 					version = new Double(request.substring(httpIndex).replaceFirst("HTTP/", "").trim());
 					logger.debug("Request: {}", request);
 				}
