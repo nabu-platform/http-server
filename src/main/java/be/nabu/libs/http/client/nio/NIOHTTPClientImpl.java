@@ -7,6 +7,7 @@ import java.security.Principal;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,6 +49,8 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	// default request timeout is 2 minutes
 	private long requestTimeout = 1000l*60*2;
+	// connection timeout after 30 seconds
+	private long connectionTimeout = 1000l*30;
 	
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
@@ -76,6 +79,18 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		});
 		thread.setDaemon(true);
 		thread.start();
+		Date date = new Date();
+		while (!client.isStarted()) {
+			if (new Date().getTime() - date.getTime() > 60000) {
+				throw new RuntimeException("Could not start nio client in time");
+			}
+			try {
+				Thread.sleep(50);
+			}
+			catch (InterruptedException e) {
+				throw new RuntimeException("Interrupted while waiting for client to start");
+			}
+		}
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -132,12 +147,14 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 			client.submitIOTask(new Runnable() {
 				public void run() {
 					try {
-						Pipeline pipeline = pipelineFuture.get();
-						((MessagePipeline<HTTPResponse, HTTPRequest>) pipeline).getResponseQueue().add(request);
+						Pipeline pipeline = pipelineFuture.get(connectionTimeout, TimeUnit.MILLISECONDS);
 						finalFuture.setPipeline(pipeline);
+						((MessagePipeline<HTTPResponse, HTTPRequest>) pipeline).getResponseQueue().add(request);
 					}
 					catch (Exception e) {
 						logger.error("Could not add to queue", e);
+						pipelineFuture.cancel(true);
+						finalFuture.cancel(true);
 						throw new RuntimeException(e);
 					}
 				}
@@ -145,8 +162,8 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		}
 		else {
 			logger.debug("Reusing existing pipeline to {}:{}", new Object[] { host, port });
-			((MessagePipeline<HTTPResponse, HTTPRequest>) pipeline).getResponseQueue().add(request);
 			future.setPipeline(pipeline);
+			((MessagePipeline<HTTPResponse, HTTPRequest>) pipeline).getResponseQueue().add(request);
 		}
 		return future;
 	}
@@ -156,15 +173,18 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		private HTTPResponse response;
 		private CountDownLatch latch = new CountDownLatch(1);
 		private Pipeline pipeline;
+		private boolean cancelled;
 		
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) {
-			return false;
+			cancelled = true;
+			latch.countDown();
+			return cancelled;
 		}
 
 		@Override
 		public boolean isCancelled() {
-			return false;
+			return cancelled;
 		}
 
 		@Override
@@ -185,6 +205,9 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		@Override
 		public HTTPResponse get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
 			if (latch.await(timeout, unit)) {
+				if (response == null) {
+					throw new RuntimeException("No response found");
+				}
                 return response;
             }
 			else {

@@ -116,6 +116,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				request = null;
 			}
 			else {
+				if (request.contains("%00")) {
+					throw new ParseException("Request line contains encoded NUL character, this is not allowed", 0);
+				}
 				initialBuffer.remark();
 				if (isResponse) {
 					if (!request.startsWith("HTTP/")) {
@@ -280,7 +283,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 			}
 		}
 		if (part != null && resource instanceof LocatableResource) {
-			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getURI().toString());
+			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getUri().toString());
 		}
 		else if (part != null) {
 			part.removeHeader(ServerHeader.RESOURCE_URI.getName());
