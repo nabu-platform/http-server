@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.events.api.EventDispatcher;
+import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
@@ -37,6 +38,8 @@ import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.api.MessagePipeline;
 import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.PipelineWithMetaData;
+import be.nabu.libs.nio.api.events.ConnectionEvent;
+import be.nabu.libs.nio.api.events.ConnectionEvent.ConnectionState;
 import be.nabu.libs.nio.impl.NIOClientImpl;
 import be.nabu.utils.mime.impl.FormatException;
 
@@ -154,7 +157,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 					catch (Exception e) {
 						logger.error("Could not add to queue", e);
 						pipelineFuture.cancel(true);
-						finalFuture.cancel(true);
+						finalFuture.fail(e);
 						throw new RuntimeException(e);
 					}
 				}
@@ -168,17 +171,23 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		return future;
 	}
 
+	// TODO: add a listener for disconnected pipeline events so we can do a latch.countDown() on disconnect, make sure we remove the listener at the correct time though...
 	public static class HTTPResponseFuture implements Future<HTTPResponse> {
 
 		private HTTPResponse response;
 		private CountDownLatch latch = new CountDownLatch(1);
 		private Pipeline pipeline;
 		private boolean cancelled;
+		private Throwable e;
+		private EventSubscription<ConnectionEvent, Void> subscription;
 		
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) {
 			cancelled = true;
 			latch.countDown();
+			if (subscription != null) {
+				subscription.unsubscribe();
+			}
 			return cancelled;
 		}
 
@@ -205,8 +214,11 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		@Override
 		public HTTPResponse get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
 			if (latch.await(timeout, unit)) {
+				if (subscription != null) {
+					subscription.unsubscribe();
+				}
 				if (response == null) {
-					throw new RuntimeException("No response found");
+					throw new RuntimeException("No response found", e);
 				}
                 return response;
             }
@@ -231,10 +243,25 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 			return pipeline;
 		}
 
-		public void setPipeline(Pipeline pipeline) {
+		public void setPipeline(final Pipeline pipeline) {
 			this.pipeline = pipeline;
+			if (pipeline != null) {
+				subscription = pipeline.getServer().getDispatcher().subscribe(ConnectionEvent.class, new EventHandler<ConnectionEvent, Void>() {
+					@Override
+					public Void handle(ConnectionEvent event) {
+						if (event.getState() == ConnectionState.CLOSED && pipeline.equals(event.getPipeline())) {
+							latch.countDown();
+						}
+						return null;
+					}
+				});
+			}
 		}
 		
+		public void fail(Throwable e) {
+			this.e = e;
+			this.cancel(true);
+		}
 	}
 	
 	public void setSecure(String host, int port, boolean secure) {
@@ -311,7 +338,9 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 			// if the request failed for whatever reason (timeout for example), close the pipeline
 			try {
 				logger.warn("Closing pipeline for failed call: " + ((HTTPResponseFuture) call).getPipeline());
-				((HTTPResponseFuture) call).getPipeline().close();
+				if (((HTTPResponseFuture) call).getPipeline() != null) {
+					((HTTPResponseFuture) call).getPipeline().close();
+				}
 			}
 			catch (Exception f) {
 				logger.debug("Could not close failed connection", f);
