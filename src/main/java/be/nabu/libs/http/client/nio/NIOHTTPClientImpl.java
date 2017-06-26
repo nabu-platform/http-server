@@ -171,7 +171,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		return future;
 	}
 
-	// TODO: add a listener for disconnected pipeline events so we can do a latch.countDown() on disconnect, make sure we remove the listener at the correct time though...
+	
 	public static class HTTPResponseFuture implements Future<HTTPResponse> {
 
 		private HTTPResponse response;
