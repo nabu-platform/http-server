@@ -17,8 +17,8 @@ import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.RealmHandler;
 import be.nabu.libs.http.api.server.SecurityHeader;
-import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
+import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.MimeUtils;
 import be.nabu.utils.security.SecurityUtils;
 
@@ -52,7 +52,7 @@ public class CertificateAuthenticationHandler implements EventHandler<HTTPReques
 						X500Principal principal = ((X509Certificate) certificate).getSubjectX500Principal();
 						Token token = authenticator.authenticate(realm, principal);
 						if (token != null) {
-							HTTPUtils.setHeader(request.getContent(), ServerHeader.AUTHENTICATION_SCHEME, "certificate");
+							request.getContent().setHeader(new MimeHeader(ServerHeader.AUTHENTICATION_SCHEME.getName(), "certificate"));
 							request.getContent().setHeader(new SimpleAuthenticationHeader(token));
 						}
 					}

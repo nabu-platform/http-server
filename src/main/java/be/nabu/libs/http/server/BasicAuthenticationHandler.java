@@ -51,7 +51,7 @@ public class BasicAuthenticationHandler implements EventHandler<HTTPRequest, HTT
 			if (authenticationHeader == null) {
 				Header header = MimeUtils.getHeader("Authorization", request.getContent().getHeaders());
 				if (header != null && header.getValue().substring(0, 5).equalsIgnoreCase("basic")) {
-					HTTPUtils.setHeader(request.getContent(), ServerHeader.AUTHENTICATION_SCHEME, "basic");
+					request.getContent().setHeader(new MimeHeader(ServerHeader.AUTHENTICATION_SCHEME.getName(), "basic"));
 					try {
 						String decoded = new String(IOUtils.toBytes(TranscoderUtils.transcodeBytes(
 							IOUtils.wrap(header.getValue().substring(6).getBytes("ASCII"), true), 
