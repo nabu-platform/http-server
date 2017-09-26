@@ -96,6 +96,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		}
 	}
 	
+	public NIOClientImpl getNIOClient() {
+		return client;
+	}
+	
 	@SuppressWarnings("unchecked")
 	@Override
 	public Future<HTTPResponse> call(final HTTPRequest request, boolean secure) throws IOException, FormatException, ParseException {
@@ -117,7 +121,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		int openConnections = 0;
 		HTTPResponseFuture future = futures.get(request);
 		if (future == null) {
-			future = new HTTPResponseFuture();
+			future = new HTTPResponseFuture(request, secure);
 			futures.put(request, future);
 		}
 		// make sure we get rid of stale connections first
@@ -145,8 +149,8 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		// if we don't have a pipeline yet or all pipelines are busy and we still have room for another connection, open a new one
 		if (pipeline == null || (currentQueueSize > 0 && openConnections < maxConnectionsPerServer)) {
 			logger.debug("Creating new pipeline [" + openConnections + "/" + maxConnectionsPerServer + "] to {}:{}", new Object[] { host, port });
-			final Future<Pipeline> pipelineFuture = client.connect(host, port);
 			final HTTPResponseFuture finalFuture = future;
+			final Future<Pipeline> pipelineFuture = client.connect(host, port);
 			client.submitIOTask(new Runnable() {
 				public void run() {
 					try {
@@ -172,14 +176,22 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	}
 
 	
-	public static class HTTPResponseFuture implements Future<HTTPResponse> {
+	public class HTTPResponseFuture implements Future<HTTPResponse> {
 
-		private HTTPResponse response;
+		private HTTPRequest request;
+		private boolean secure;
+		private volatile HTTPResponse response;
 		private CountDownLatch latch = new CountDownLatch(1);
 		private Pipeline pipeline;
 		private boolean cancelled;
 		private Throwable e;
 		private EventSubscription<ConnectionEvent, Void> subscription;
+		private volatile int retries;
+		
+		public HTTPResponseFuture(HTTPRequest request, boolean secure) {
+			this.request = request;
+			this.secure = secure;
+		}
 		
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) {
@@ -236,6 +248,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				throw new IllegalStateException("A response has already been set");
 			}
 			this.response = response;
+			if (subscription != null) {
+				subscription.unsubscribe();
+				subscription = null;
+			}
 			latch.countDown();
 		}
 
@@ -250,11 +266,40 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 					@Override
 					public Void handle(ConnectionEvent event) {
 						if (event.getState() == ConnectionState.CLOSED && pipeline.equals(event.getPipeline())) {
-							latch.countDown();
+							subscription.unsubscribe();
+							subscription = null;
+							// if no response was returned, retry or count down the latch for fast fail
+							if (response == null && !cancelled) {
+								retry(null);
+							}
 						}
 						return null;
 					}
+
 				});
+			}
+		}
+		
+		public void retry(Exception e) {
+			if (retries < 2) {
+				retries++;
+				client.submitIOTask(new Runnable() {
+					@Override
+					public void run() {
+						try {
+							call(request, secure);
+						}
+						catch (Exception e) {
+							fail(e);
+						}
+					}
+				});
+			}
+			else if (e != null) {
+				fail(e);
+			}
+			else {
+				latch.countDown();
 			}
 		}
 		
@@ -337,7 +382,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		catch (Exception e) {
 			// if the request failed for whatever reason (timeout for example), close the pipeline
 			try {
-				logger.warn("Closing pipeline for failed call: " + ((HTTPResponseFuture) call).getPipeline());
+				logger.warn("Closing pipeline for failed call: " + ((HTTPResponseFuture) call).getPipeline(), e);
 				if (((HTTPResponseFuture) call).getPipeline() != null) {
 					((HTTPResponseFuture) call).getPipeline().close();
 				}

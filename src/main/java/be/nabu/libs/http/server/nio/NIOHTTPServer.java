@@ -26,8 +26,12 @@ public class NIOHTTPServer extends NIOServerImpl implements HTTPServer {
 	}
 	
 	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory) {
+		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher, threadFactory, false);
+	}
+	
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory, boolean isProxied) {
 		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, new HTTPPipelineFactoryImpl(
-			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), false, dispatcher), 
+			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), isProxied, dispatcher), 
 			new MemoryMessageDataProvider()
 		), dispatcher, threadFactory);
 	}

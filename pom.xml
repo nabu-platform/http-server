@@ -45,6 +45,10 @@
 			<groupId>be.nabu.libs.nio</groupId>
 			<artifactId>nio-server</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>be.nabu.libs.nio</groupId>
+			<artifactId>nio-client</artifactId>
+		</dependency>
 		
 		<dependency>
 			<groupId>org.slf4j</groupId>

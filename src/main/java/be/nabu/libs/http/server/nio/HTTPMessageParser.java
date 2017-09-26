@@ -173,10 +173,23 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 			}
 			else {
 				ReadableContainer<CharBuffer> data = new ReadableStraightByteToCharContainer(initialBuffer);
-				headers = MimeUtils.readHeaders(data, true);
+				try {
+					headers = MimeUtils.readHeaders(data, true);
+				}
+				catch (ParseException e) {
+					// it is possible that we received partial headers because they were cut in two by the transport layer
+					// this problem occurred at 2017-09-25 where the proxy injected many "new" headers which presumably went over the packet size of the transport layer
+					// partial headers bumped into a parse exception for MimeHeader.parseHeader()
+					// this bubbled up, causing the message framer to close the connection and a retry on the proxy side
+					// we set the error offset to 1 for that particular error to be able to recognize it
+					// other parse exceptions should bubble up
+					if (e.getErrorOffset() != 1) {
+						throw e;
+					}
+				}
 				// if we did not find the headers in the allotted space, throw an exception
 				if (headers == null && limitedBuffer.remainingSpace() == 0) {
-					throw new ParseException("No headers found within the size limit: " + maxHeaderSize + " bytes", 1);
+					throw new HTTPException(431, "No headers found within the size limit: " + maxHeaderSize + " bytes");
 				}
 				else if (headers != null) {
 					initialBuffer.unmark();
@@ -198,7 +211,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					}
 					else if (!"chunked".equals(transferEncoding)) {
 						// throw the exception code for length required
-						throw new HTTPException(411);
+						throw new HTTPException(411, "No content-length provided and not using chunked");
 					}
 					chunked = new ChunkedReadableByteContainer(initialBuffer);
 					chunked.setMaxChunkSize(maxChunkSize);
@@ -261,7 +274,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				}
 				else {
 					if (initialBuffer.remainingData() != writable.write(initialBuffer)) {
-						throw new IOException("The backing resource does not have enough space");
+						throw new HTTPException(413, "The backing resource does not have enough space");
 					}
 					// we have reached the end
 					if (totalRead == contentLength) {
