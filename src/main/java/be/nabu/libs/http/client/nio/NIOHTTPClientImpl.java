@@ -54,6 +54,9 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	private long requestTimeout = 1000l*60*2;
 	// connection timeout after 30 seconds
 	private long connectionTimeout = 1000l*30;
+	// amount of retries to do if a request failed
+	// failure in this case means we get an actual connection error (e.g. timeout etc) not a 500
+	private int amountOfRetries = 0;
 	
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
@@ -281,7 +284,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		}
 		
 		public void retry(Exception e) {
-			if (retries < 2) {
+			if (retries < amountOfRetries) {
 				retries++;
 				client.submitIOTask(new Runnable() {
 					@Override
@@ -299,7 +302,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				fail(e);
 			}
 			else {
-				latch.countDown();
+				cancel(true);
 			}
 		}
 		
@@ -419,6 +422,14 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 
 	public void setRequestTimeout(long requestTimeout) {
 		this.requestTimeout = requestTimeout;
+	}
+
+	public int getAmountOfRetries() {
+		return amountOfRetries;
+	}
+
+	public void setAmountOfRetries(int amountOfRetries) {
+		this.amountOfRetries = amountOfRetries;
 	}
 	
 }
