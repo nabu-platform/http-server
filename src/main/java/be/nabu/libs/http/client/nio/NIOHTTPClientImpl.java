@@ -114,7 +114,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		String host = uri.getAuthority();
 		int indexOfColon = host.indexOf(':');
 		if (indexOfColon >= 0) {
-			port = new Integer(host.substring(indexOfColon + 1));
+			String substring = host.substring(indexOfColon + 1);
+			if (!substring.isEmpty()) {
+				port = new Integer(substring);
+			}
 			host = host.substring(0, indexOfColon);
 		}
 		setSecure(host, port, secure);
