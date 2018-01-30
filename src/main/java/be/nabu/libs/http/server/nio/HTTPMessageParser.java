@@ -145,7 +145,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 //					target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
 					target = request.substring(firstSpaceIndex + 1, httpIndex).trim();
 					version = new Double(request.substring(httpIndex).replaceFirst("HTTP/", "").trim());
-					logger.debug("Request: {}", request);
+					if (logger.isDebugEnabled()) {
+						logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") first line: {}", request);
+					}
 				}
 			}
 		}
@@ -193,7 +195,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				}
 				else if (headers != null) {
 					initialBuffer.unmark();
-					logger.trace("Headers: {}", Arrays.asList(headers));
+					if (logger.isDebugEnabled()) {
+						logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") headers: {}", Arrays.asList(headers));
+					}
 				}
 			}
 		}
@@ -278,7 +282,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					}
 					// we have reached the end
 					if (totalRead == contentLength) {
-						logger.trace("Finished reading {} bytes", totalRead);
+						if (logger.isDebugEnabled()) {
+							logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") finished reading {} bytes", totalRead - initialBuffer.remainingData());
+						}
 						writable.close();
 						// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
 						part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);

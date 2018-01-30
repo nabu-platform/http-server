@@ -2,11 +2,14 @@ package be.nabu.libs.http.server.nio;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.LinkableHTTPResponse;
 import be.nabu.libs.nio.api.MessageFormatter;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
@@ -20,6 +23,22 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 	@SuppressWarnings("unchecked")
 	@Override
 	public ReadableContainer<ByteBuffer> format(HTTPResponse message) {
+		if (logger.isDebugEnabled()) {
+			HTTPRequest request = null;
+			if (message instanceof LinkableHTTPResponse) {
+				request = ((LinkableHTTPResponse) message).getRequest();
+			}
+			if (request == null) {
+				logger.debug("[OUTBOUND] Anonymous response (" + hashCode() + ") code: " + message.getCode() + " " + message.getMessage());
+			}
+			else {
+				logger.debug("[OUTBOUND] Response to " + request.getMethod() + " " + request.getTarget() + " (" + hashCode() + ") code: " + message.getCode() + " " + message.getMessage());
+			}
+			if (message.getContent() != null) {
+				logger.debug("[OUTBOUND] Response (" + hashCode() + ") headers: " + Arrays.asList(message.getContent().getHeaders()));
+			}
+		}
+		
 		byte [] firstLine = ("HTTP/" + message.getVersion() + " " + message.getCode() + " " + message.getMessage() + "\r\n").getBytes(Charset.forName("ASCII"));
 
 		// no content, just write the ending

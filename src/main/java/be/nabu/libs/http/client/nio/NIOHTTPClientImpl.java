@@ -38,6 +38,7 @@ import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.api.MessagePipeline;
 import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.PipelineWithMetaData;
+import be.nabu.libs.nio.api.StandardizedMessagePipeline;
 import be.nabu.libs.nio.api.events.ConnectionEvent;
 import be.nabu.libs.nio.api.events.ConnectionEvent.ConnectionState;
 import be.nabu.libs.nio.impl.NIOClientImpl;
@@ -135,6 +136,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		
 		HTTPClientPipelineFactory factory = ((HTTPClientPipelineFactory) client.getPipelineFactory());
 		for (Pipeline possible : new ArrayList<Pipeline>(client.getPipelines())) {
+			// we can only use pipelines that can process http requests
+			if (!(possible instanceof StandardizedMessagePipeline) || !(((StandardizedMessagePipeline<?, ?>) possible).getResponseFormatterFactory() instanceof HTTPRequestFormatterFactory)) {
+				continue;
+			}
 			Map<String, Object> metaData = ((PipelineWithMetaData) possible).getMetaData();
 			String possibleHost = (String) metaData.get("host");
 			Integer possiblePort = (Integer) metaData.get("port");

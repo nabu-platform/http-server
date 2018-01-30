@@ -57,6 +57,12 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 				cookieHandler.put(originalUri, getHeadersAsMap(response.getContent().getHeaders()));
 			}
 			HTTPResponseFuture httpResponseFuture = request == null ? null : futures.get(request);
+			
+			// in some cases the response might not be successful (additional authentication required, need to follow redirects etc)
+			// if that is the case, we don't want to resolve the futures just yet, instead we want to redo the request with the necessary parameters
+			// note that we already send it up the dispatcher pipeline, so we no longer need to send it to the super to send it again down the chain
+			// this actually means we might not need to extend the parent class?
+			
 			// if the response is not successful, see if we have a handler for it
 			HTTPRequest retryRequest = client.getDispatcher().fire(response, PipelineUtils.getPipeline(), new ResponseHandler<HTTPResponse, HTTPRequest>() {
 				@Override
@@ -64,11 +70,12 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 					return response instanceof HTTPRequest ? (HTTPRequest) response : null;
 				}
 			});
+			// note that sometimes the retryrequest is the exact same object (but altered) as the original request
 			if (retryRequest != null) {
 				// we are gonna do the new request, update the future to point to the new request
 				if (httpResponseFuture != null) {
-					futures.put(retryRequest, httpResponseFuture);
 					futures.remove(request);
+					futures.put(retryRequest, httpResponseFuture);
 				}
 				URI newUri = HTTPUtils.getURI(retryRequest, secure);
 				String newHost = NIOHTTPClientImpl.getHost(newUri);
@@ -80,8 +87,9 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 						return retryRequest;
 					}
 				}
-				client.call(retryRequest, client.getSecure(newHost, newPort));
-				return null;
+//				client.call(retryRequest, client.getSecure(newHost, newPort));
+				// need it to be run on the same pipeline
+				return retryRequest;
 			}
 			// resolve the future
 			if (httpResponseFuture != null) {
@@ -91,7 +99,8 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 			if (!HTTPUtils.keepAlive(response)) {
 				PipelineUtils.getPipeline().close();
 			}
-			return super.process(securityContext, sourceContext, response);
+//			return super.process(securityContext, sourceContext, response);
+			return null;
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);

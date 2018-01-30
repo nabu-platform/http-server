@@ -2,6 +2,7 @@ package be.nabu.libs.http.client.nio;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.Deque;
 
 import org.slf4j.Logger;
@@ -27,8 +28,14 @@ public class HTTPRequestFormatter implements MessageFormatter<HTTPRequest> {
 	@SuppressWarnings("unchecked")
 	@Override
 	public ReadableContainer<ByteBuffer> format(HTTPRequest message) {
-		logger.debug("< " + message.getMethod() + " " + message.getTarget());
-		byte [] firstLine = (message.getMethod() + " " + URIUtils.encodeURI(message.getTarget()) + " HTTP/" + message.getVersion() + "\r\n").getBytes(Charset.forName("ASCII"));
+		if (logger.isDebugEnabled()) {
+			logger.debug("[OUTBOUND] Request (" + hashCode() + "): " + message.getMethod() + " " + message.getTarget());
+			if (message.getContent() != null) {
+				logger.debug("[OUTBOUND] Request (" + hashCode() + ") headers: " + Arrays.asList(message.getContent().getHeaders()));
+			}
+		}
+		
+		byte [] firstLine = (message.getMethod() + " " + URIUtils.encodeURI(message.getTarget(), false) + " HTTP/" + message.getVersion() + "\r\n").getBytes(Charset.forName("ASCII"));
 
 		// no content, just write the ending
 		if (message.getContent() == null) {
