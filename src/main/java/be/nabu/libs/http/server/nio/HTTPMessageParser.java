@@ -60,6 +60,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	private ModifiablePart part;
 	private byte [] pair = new byte[2];
 	private ByteBuffer copyBuffer = new CyclicByteBuffer(COPY_SIZE);
+	private boolean allowNoContent = Boolean.parseBoolean(System.getProperty("http.allowNoContent", "true"));
 	
 	private String request;
 	private long totalRead, totalChunkRead;
@@ -322,6 +323,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	}
 	
 	private boolean allowWithoutContent(String method) {
+		if (allowNoContent) {
+			return true;
+		}
 		return allowWithoutHeaders(method);
 	}
 	
