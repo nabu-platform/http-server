@@ -1,6 +1,8 @@
 package be.nabu.libs.http.server;
 
 import java.net.InetSocketAddress;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +12,7 @@ import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.HeaderMappingProvider;
 import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
@@ -17,6 +20,8 @@ import be.nabu.libs.nio.api.ExceptionFormatter;
 import be.nabu.libs.nio.api.SecurityContext;
 import be.nabu.libs.nio.api.SourceContext;
 import be.nabu.libs.nio.impl.EventDrivenMessageProcessor;
+import be.nabu.utils.mime.api.Header;
+import be.nabu.utils.mime.api.ModifiablePart;
 import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.MimeUtils;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
@@ -24,13 +29,45 @@ import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTPResponse> {
 	
 	private boolean isProxied;
+	private HeaderMappingProvider mapping;
 
-	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied) {
+	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, HeaderMappingProvider mapping) {
 		super(HTTPRequest.class, HTTPResponse.class, dispatcher, exceptionFormatter, true);
 		this.isProxied = isProxied;
+		this.mapping = mapping;
 	}
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
+	
+	private void cleanRequestHeaders(ModifiablePart part, HeaderMappingProvider mapping) {
+		Map<String, Header[]> remap = new HashMap<String, Header[]>();
+		Map<String, String> mappings = mapping == null ? null : mapping.getMappings();
+		if (mappings == null) {
+			mappings = new HashMap<String, String>();
+		}
+		// take the headers we want to remap
+		for (Map.Entry<String, String> entry : mappings.entrySet()) {
+			if (entry.getKey() != null && entry.getValue() != null && !entry.getKey().trim().isEmpty() && !entry.getValue().trim().isEmpty()) {
+				Header[] headers = MimeUtils.getHeaders(entry.getValue(), part.getHeaders());
+				if (headers != null && headers.length > 0) {
+					remap.put(entry.getKey(), headers);
+				}
+			}
+		}
+		
+		// remove all the headers that are not allowed
+		for (ServerHeader header : ServerHeader.values()) {
+			if (!header.isUserValueAllowed()) {
+				part.removeHeader(header.getName());
+			}
+		}
+		// reinjected the explicitly mapped headers
+		for (Map.Entry<String, Header[]> entry : remap.entrySet()) {
+			for (Header original : entry.getValue()) {
+				part.setHeader(new MimeHeader(entry.getKey(), original.getValue(), original.getComments()));
+			}
+		}
+	}
 	
 	@Override
 	public HTTPResponse process(SecurityContext securityContext, SourceContext sourceContext, final HTTPRequest request) {
@@ -44,23 +81,15 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			request.getContent().removeHeader(ServerHeader.REQUEST_SECURITY.name());
 			// add a new one
 			request.getContent().setHeader(new SimpleSecurityHeader(securityContext.getSSLContext(), securityContext.getPeerCertificates()));
+			cleanRequestHeaders(request.getContent(), mapping);
+			// if not proxied, inject the remote data
 			if (!isProxied) {
-				for (ServerHeader header : ServerHeader.values()) {
-					if (!header.isUserValueAllowed()) {
-						request.getContent().removeHeader(header.getName());
-					}
-				}
 				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocketAddress());
 				if (remoteSocketAddress != null) {
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
 					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(remoteSocketAddress.getPort()).toString());
-				}
-				else {
-					request.getContent().removeHeader(ServerHeader.REMOTE_IS_LOCAL.name());
-					request.getContent().removeHeader(ServerHeader.REMOTE_ADDRESS.name());
-					request.getContent().removeHeader(ServerHeader.REMOTE_HOST.name());
 				}
 				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getLocalPort()).toString());
 			}

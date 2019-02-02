@@ -302,11 +302,15 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				isClosed = true;
 			}
 		}
+		
+		// always remove these headers, they should not be coming from the client, not even in a proxy situation
+		if (part != null) {
+			part.removeHeader(ServerHeader.RESOURCE_URI.getName());
+			part.removeHeader(ServerHeader.REQUEST_RECEIVED.getName());
+		}
+		
 		if (part != null && resource instanceof LocatableResource) {
 			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getUri().toString());
-		}
-		else if (part != null) {
-			part.removeHeader(ServerHeader.RESOURCE_URI.getName());
 		}
 		
 		// set the timestamp that it was received

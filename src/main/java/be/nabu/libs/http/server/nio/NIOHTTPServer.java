@@ -7,6 +7,7 @@ import javax.net.ssl.SSLContext;
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.HeaderMappingProvider;
 import be.nabu.libs.http.api.server.HTTPPipelineFactory;
 import be.nabu.libs.http.api.server.HTTPServer;
 import be.nabu.libs.http.api.server.MessageDataProvider;
@@ -26,12 +27,16 @@ public class NIOHTTPServer extends NIOServerImpl implements HTTPServer {
 	}
 	
 	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory) {
-		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher, threadFactory, false);
+		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher, threadFactory, false, null);
 	}
 	
 	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory, boolean isProxied) {
+		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, dispatcher, threadFactory, false, null);
+	}
+	
+	public NIOHTTPServer(SSLContext sslContext, SSLServerMode sslServerMode, int port, int ioPoolSize, int processPoolSize, EventDispatcher dispatcher, ThreadFactory threadFactory, boolean isProxied, HeaderMappingProvider mapping) {
 		this(sslContext, sslServerMode, port, ioPoolSize, processPoolSize, new HTTPPipelineFactoryImpl(
-			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), isProxied, dispatcher), 
+			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), isProxied, dispatcher, mapping), 
 			new MemoryMessageDataProvider()
 		), dispatcher, threadFactory);
 	}
