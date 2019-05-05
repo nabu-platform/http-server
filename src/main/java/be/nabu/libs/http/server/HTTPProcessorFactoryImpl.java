@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import be.nabu.libs.events.api.EventDispatcher;
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
@@ -23,15 +24,17 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 	private ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter;
 	private boolean isProxied;
 	private HeaderMappingProvider mapping;
+	private EventTarget eventTarget;
 
 	public HTTPProcessorFactoryImpl(ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, EventDispatcher coreDispatcher) {
-		this(exceptionFormatter, isProxied, coreDispatcher, null);
+		this(exceptionFormatter, isProxied, coreDispatcher, null, null);
 	}
 	
-	public HTTPProcessorFactoryImpl(ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, EventDispatcher coreDispatcher, HeaderMappingProvider mapping) {
+	public HTTPProcessorFactoryImpl(ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, EventDispatcher coreDispatcher, HeaderMappingProvider mapping, EventTarget eventTarget) {
 		this.exceptionFormatter = exceptionFormatter;
 		this.isProxied = isProxied;
 		this.mapping = mapping;
+		this.eventTarget = eventTarget;
 		this.route(null, coreDispatcher);
 	}
 	
@@ -59,7 +62,7 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 			return null;
 		}
 		else {
-			return new HTTPProcessor(dispatcher, exceptionFormatter, isProxied, mapping);
+			return new HTTPProcessor(dispatcher, exceptionFormatter, isProxied, mapping, eventTarget);
 		}
 	}
 

@@ -1,6 +1,7 @@
 package be.nabu.libs.http.server;
 
 import java.net.InetSocketAddress;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.events.api.EventDispatcher;
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
@@ -16,12 +18,17 @@ import be.nabu.libs.http.api.HeaderMappingProvider;
 import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
+import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.ExceptionFormatter;
+import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.SecurityContext;
 import be.nabu.libs.nio.api.SourceContext;
 import be.nabu.libs.nio.impl.EventDrivenMessageProcessor;
+import be.nabu.utils.cep.impl.CEPUtils;
+import be.nabu.utils.cep.impl.HTTPComplexEventImpl;
 import be.nabu.utils.mime.api.Header;
 import be.nabu.utils.mime.api.ModifiablePart;
+import be.nabu.utils.mime.impl.FormatException;
 import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.MimeUtils;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
@@ -30,11 +37,13 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 	
 	private boolean isProxied;
 	private HeaderMappingProvider mapping;
+	private EventTarget eventTarget;
 
-	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, HeaderMappingProvider mapping) {
+	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, HeaderMappingProvider mapping, EventTarget eventTarget) {
 		super(HTTPRequest.class, HTTPResponse.class, dispatcher, exceptionFormatter, true);
 		this.isProxied = isProxied;
 		this.mapping = mapping;
+		this.eventTarget = eventTarget;
 	}
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
@@ -71,6 +80,21 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 	
 	@Override
 	public HTTPResponse process(SecurityContext securityContext, SourceContext sourceContext, final HTTPRequest request) {
+		HTTPComplexEventImpl event = null;
+		if (eventTarget != null) {
+			event = new HTTPComplexEventImpl();
+			Pipeline pipeline = PipelineUtils.getPipeline();
+			CEPUtils.enrich(event, getClass(), "http-request", pipeline.getSourceContext().getSocketAddress(), null, null);
+			event.setStarted(new Date());
+			event.setMethod(request.getMethod());
+			try {
+				event.setRequestUri(HTTPUtils.getURI(request, securityContext.getSSLContext() != null));
+			}
+			catch (FormatException e) {
+				// too bad
+			}
+			event.setApplicationProtocol(securityContext.getSSLContext() != null ? "HTTPS" : "HTTP");
+		}
 		if (request.getVersion() >= 1.1) {
 			if (MimeUtils.getHeader("Host", request.getContent().getHeaders()) == null) {
 				throw new HTTPException(400, "Missing host header");
@@ -99,6 +123,16 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 		// make sure any requested connection closing is also enforced in the server
 		if (!HTTPUtils.keepAlive(request) && response.getContent() != null) {
 			response.getContent().setHeader(new MimeHeader("Connection", "close"));
+		}
+		
+		if (event != null) {
+			event.setStopped(new Date());
+			event.setSizeIn(MimeUtils.getContentLength(request.getContent().getHeaders()));
+			if (response != null) {
+				event.setSizeOut(MimeUtils.getContentLength(response.getContent().getHeaders()));
+				event.setResponseCode(response.getCode());
+			}
+			eventTarget.fire(event, this);
 		}
 		return response;
 	}
