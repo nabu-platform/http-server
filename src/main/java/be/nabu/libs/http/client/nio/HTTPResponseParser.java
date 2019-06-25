@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Deque;
 
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.MessageDataProvider;
@@ -18,9 +19,9 @@ public class HTTPResponseParser implements MessageParser<HTTPResponse> {
 	private HTTPMessageParser messageFramer;
 	private Deque<HTTPRequest> queue;
 	
-	public HTTPResponseParser(MessageDataProvider dataProvider, Deque<HTTPRequest> queue) {
+	public HTTPResponseParser(MessageDataProvider dataProvider, Deque<HTTPRequest> queue, EventTarget target) {
 		this.queue = queue;
-		this.messageFramer = new HTTPMessageParser(dataProvider, true);
+		this.messageFramer = new HTTPMessageParser(dataProvider, true, target);
 	}
 
 	@Override

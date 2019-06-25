@@ -12,9 +12,15 @@ import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.HeaderMappingProvider;
 import be.nabu.libs.http.api.server.HTTPProcessorFactory;
+import be.nabu.libs.http.core.HTTPUtils;
+import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.ExceptionFormatter;
 import be.nabu.libs.nio.api.MessageProcessor;
+import be.nabu.utils.cep.api.EventSeverity;
+import be.nabu.utils.cep.impl.CEPUtils;
+import be.nabu.utils.cep.impl.HTTPComplexEventImpl;
 import be.nabu.utils.mime.api.Header;
+import be.nabu.utils.mime.impl.FormatException;
 import be.nabu.utils.mime.impl.MimeUtils;
 
 public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
@@ -55,6 +61,19 @@ public class HTTPProcessorFactoryImpl implements HTTPProcessorFactory {
 			}
 		}
 		if (host == null && request.getVersion() >= 1.1) {
+			if (eventTarget != null) {
+				HTTPComplexEventImpl event = new HTTPComplexEventImpl();
+				CEPUtils.enrich(event, getClass(), "missing-host-header", PipelineUtils.getPipeline().getSourceContext().getSocketAddress(), "No host header found", null);
+				event.setSeverity(EventSeverity.WARNING);
+				event.setMethod(request.getMethod());
+				try {
+					event.setRequestUri(HTTPUtils.getURI(request, false));
+				}
+				catch (FormatException e) {
+					// ignore
+				}
+				eventTarget.fire(event, this);
+			}
 			throw new HTTPException(400, "Expecting host header for HTTP version " + request.getVersion());
 		}
 		EventDispatcher dispatcher = getDispatcher(host);

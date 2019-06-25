@@ -33,7 +33,7 @@ public class HTTPPipelineFactoryImpl implements HTTPPipelineFactory {
 	
 	@Override
 	public Pipeline newPipeline(NIOServer server, SelectionKey key) throws IOException {
-		HTTPRequestParserFactory requestParserFactory = new HTTPRequestParserFactory(messageDataProvider);
+		HTTPRequestParserFactory requestParserFactory = new HTTPRequestParserFactory(messageDataProvider, server);
 		requestParserFactory.setMaxChunkSize(maxChunkSize);
 		requestParserFactory.setMaxHeaderSize(maxHeaderSize);
 		requestParserFactory.setMaxInitialLineLength(maxInitialLineLength);

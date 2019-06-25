@@ -44,6 +44,7 @@ public class NIOHTTPServer extends NIOServerImpl implements HTTPServer {
 			new HTTPProcessorFactoryImpl(new DefaultHTTPExceptionFormatter(), isProxied, dispatcher, mapping, eventTarget), 
 			new MemoryMessageDataProvider()
 		), dispatcher, threadFactory);
+		setEventTarget(eventTarget);
 	}
 
 	@Override

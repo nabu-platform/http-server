@@ -3,6 +3,7 @@ package be.nabu.libs.http.server.nio;
 import java.io.IOException;
 import java.text.ParseException;
 
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.DefaultHTTPRequest;
@@ -15,7 +16,11 @@ public class HTTPRequestParser implements MessageParser<HTTPRequest> {
 	private HTTPMessageParser messageFramer;
 	
 	public HTTPRequestParser(MessageDataProvider dataProvider) {
-		this.messageFramer = new HTTPMessageParser(dataProvider);
+		this(dataProvider, null);
+	}
+	
+	public HTTPRequestParser(MessageDataProvider dataProvider, EventTarget target) {
+		this.messageFramer = new HTTPMessageParser(dataProvider, target);
 	}
 
 	@Override

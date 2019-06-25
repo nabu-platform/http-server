@@ -58,20 +58,24 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 		MessagePipelineImpl<HTTPResponse, HTTPRequest> pipeline = new MessagePipelineImpl<HTTPResponse, HTTPRequest>(
 			server,
 			key,
-			new HTTPResponseParserFactory(messageDataProvider, queue),
+			new HTTPResponseParserFactory(messageDataProvider, queue, server),
 			new HTTPRequestFormatterFactory(queue),
 			new HTTPResponseProcessorFactory(client, cookieHandler, secure, dispatcher, exceptionFormatter, futures),
 			new KeepAliveDecider<HTTPRequest>() {
 				@Override
 				public boolean keepConnectionAlive(HTTPRequest request) {
-					boolean keepAlive = HTTPUtils.keepAlive(request);
-					if (keepAlive && request.getContent() != null) {
-						Header header = MimeUtils.getHeader("Proxy-Connection", request.getContent().getHeaders());
-						if (header != null && header.getValue().equalsIgnoreCase("close")) {
-							return false;
-						}
-					}
-					return keepAlive;
+					// we must first emit the request, then wait for the response
+					// the ResponseWriter however will write the request, then see the connection closed and close the pipeline without waiting for a response
+					// in short: connection closed has to be respected by the server, not the client
+					return true;
+//					boolean keepAlive = HTTPUtils.keepAlive(request);
+//					if (keepAlive && request.getContent() != null) {
+//						Header header = MimeUtils.getHeader("Proxy-Connection", request.getContent().getHeaders());
+//						if (header != null && header.getValue().equalsIgnoreCase("close")) {
+//							return false;
+//						}
+//					}
+//					return keepAlive;
 				}
 			},
 			exceptionFormatter,

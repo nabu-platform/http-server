@@ -41,6 +41,7 @@ import be.nabu.libs.nio.api.PipelineWithMetaData;
 import be.nabu.libs.nio.api.StandardizedMessagePipeline;
 import be.nabu.libs.nio.api.events.ConnectionEvent;
 import be.nabu.libs.nio.api.events.ConnectionEvent.ConnectionState;
+import be.nabu.libs.nio.impl.MessagePipelineImpl;
 import be.nabu.libs.nio.impl.NIOClientImpl;
 import be.nabu.utils.mime.impl.FormatException;
 
@@ -61,6 +62,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
+	private Thread thread;
 	
 	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, final ThreadFactory threadFactory) {
 		this.maxConnectionsPerServer = maxConnectionsPerServer;
@@ -74,13 +76,13 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				return thread;
 			}
 		});
-		Thread thread = new Thread(new Runnable() {
+		thread = new Thread(new Runnable() {
 			public void run() {
 				try {
 					client.start();
 				}
-				catch (IOException e) {
-					throw new RuntimeException(e);
+				catch (Exception e) {
+					logger.warn("Could not run http client", e);
 				}
 			}
 		});
@@ -277,11 +279,39 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 					@Override
 					public Void handle(ConnectionEvent event) {
 						if (event.getState() == ConnectionState.CLOSED && pipeline.equals(event.getPipeline())) {
+							((MessagePipelineImpl<?, ?>) pipeline).drainInput();
+						}
+						if (event.getState() == ConnectionState.EMPTY && pipeline.equals(event.getPipeline())) {
 							subscription.unsubscribe();
 							subscription = null;
-							// if no response was returned, retry or count down the latch for fast fail
-							if (response == null && !cancelled) {
-								retry(null);
+							// if no response was returned, retry or count down the latch for fast fail.
+							// the problem is as follows: the server sends back an error (e.g. a 404) with a close connection header in it
+							// the server sends out all the bytes and promptly closes the connection
+							// this gets triggered immediately on close, and the bytes have most likely already arrived but not been processed yet
+							// that means we preemptively decide the server is not gonna send back a response and we get a ton of "No response found" exceptions because we close the latch before the response is processed
+							// the retry itself has been generally experienced as evil anyway and should be handled (if relevant) by an outside party
+//							if (response == null && !cancelled) {
+//								retry(null);
+//							}
+							// if we didn't get a response _and_ the pipeline is empty (so nothing left to process), do an early cancel
+							if (response == null && ((MessagePipeline<?, ?>) pipeline).getRequestQueue().isEmpty()) {
+								// there is a chance that it has already left the request queue but it is still being processed, in fact it seems to be the case in +- 70% of our tests
+								// so let's check the processing future
+								Future<?> processFuture = ((MessagePipelineImpl<?, ?>) pipeline).getProcessFuture();
+								if (processFuture == null || processFuture.isDone()) {
+									cancel(true);
+								}
+								else {
+									try {
+										processFuture.get(2, TimeUnit.SECONDS);
+									}
+									catch (Exception e) {
+										// do nothing
+									}
+									if (response == null) {
+										cancel(true);
+									}
+								}
 							}
 						}
 						return null;
@@ -431,11 +461,11 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	public void setRequestTimeout(long requestTimeout) {
 		this.requestTimeout = requestTimeout;
 	}
-
+	@Deprecated
 	public int getAmountOfRetries() {
 		return amountOfRetries;
 	}
-
+	@Deprecated
 	public void setAmountOfRetries(int amountOfRetries) {
 		this.amountOfRetries = amountOfRetries;
 	}

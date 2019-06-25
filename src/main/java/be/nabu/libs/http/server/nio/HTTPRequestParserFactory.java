@@ -1,5 +1,6 @@
 package be.nabu.libs.http.server.nio;
 
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.nio.api.MessageParser;
@@ -11,14 +12,16 @@ public class HTTPRequestParserFactory implements MessageParserFactory<HTTPReques
 	private Integer maxInitialLineLength;
 	private Integer maxHeaderSize;
 	private Integer maxChunkSize;
+	private EventTarget target;
 
-	public HTTPRequestParserFactory(MessageDataProvider provider) {
+	public HTTPRequestParserFactory(MessageDataProvider provider, EventTarget target) {
 		this.provider = provider;
+		this.target = target;
 	}
 	
 	@Override
 	public MessageParser<HTTPRequest> newMessageParser() {
-		HTTPRequestParser parser = new HTTPRequestParser(provider);
+		HTTPRequestParser parser = new HTTPRequestParser(provider, target);
 		if (maxInitialLineLength != null) {
 			parser.getMessageFramer().setMaxInitialLineLength(maxInitialLineLength);
 		}

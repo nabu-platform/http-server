@@ -11,16 +11,22 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.server.EnrichingMessageDataProvider;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
+import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.MessageParser;
+import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.resources.api.LocatableResource;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.WritableResource;
+import be.nabu.utils.cep.api.EventSeverity;
+import be.nabu.utils.cep.impl.CEPUtils;
+import be.nabu.utils.cep.impl.NetworkedComplexEventImpl;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.CharBuffer;
@@ -87,16 +93,35 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	 * But in some cases you may simply want to store the payload
 	 */
 	private boolean includeHeaders = true;
+
+	private EventTarget eventTarget;
 	
-	public HTTPMessageParser(MessageDataProvider dataProvider) {
-		this(dataProvider, false);
+	public HTTPMessageParser(MessageDataProvider dataProvider, EventTarget target) {
+		this(dataProvider, false, target);
 	}
 	
-	public HTTPMessageParser(MessageDataProvider dataProvider, boolean isResponse) {
+	public HTTPMessageParser(MessageDataProvider dataProvider, boolean isResponse, EventTarget eventTarget) {
 		this.dataProvider = dataProvider;
 		this.isResponse = isResponse;
+		this.eventTarget = eventTarget;
 		initialBuffer = new DynamicByteBuffer();
 		initialBuffer.mark();
+	}
+	
+	private void report(EventSeverity severity, String eventName, String code, String message, Exception e) {
+		if (eventTarget != null) {
+			try {
+				Pipeline pipeline = PipelineUtils.getPipeline();
+				NetworkedComplexEventImpl event = CEPUtils.newServerNetworkEvent(getClass(), eventName, pipeline == null ? null : pipeline.getSourceContext().getSocketAddress(), message, e);
+				event.setCode(code);
+				event.setSeverity(severity);
+				event.setApplicationProtocol("HTTP");
+				eventTarget.fire(event, this);
+			}
+			catch (Exception f) {
+				logger.warn("Could not register event", f);
+			}
+		}
 	}
 	
 	@Override
@@ -112,22 +137,26 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 			if (!delimit.isDelimiterFound()) {
 				// if we have reached the maximum size for the request and not found one, throw an exception
 				if (request.length() >= maxInitialLineLength) {
+					report(EventSeverity.WARNING, "http-parse", "NO-FIRST-LINE", "Could not find initial line in first " + maxInitialLineLength + " bytes", null);
 					throw new HTTPException(414);
 				}
 				request = null;
 			}
 			else {
 				if (request.contains("%00")) {
+					report(EventSeverity.WARNING, "http-parse", "NUL", "Request/response line contains encoded NUL character", null);
 					throw new ParseException("Request line contains encoded NUL character, this is not allowed", 0);
 				}
 				initialBuffer.remark();
 				if (isResponse) {
 					if (!request.startsWith("HTTP/")) {
+						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null);
 						throw new ParseException("Could not parse response line: " + request, 0);
 					}
 					int firstSpaceIndex = request.indexOf(' ');
 					int secondSpaceIndex = request.indexOf(' ', firstSpaceIndex + 1);
 					if (firstSpaceIndex < 0 || secondSpaceIndex < 0) {
+						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null);
 						throw new ParseException("Could not parse response line: " + request, 0);
 					}
 					version = new Double(request.substring(0, firstSpaceIndex).replaceFirst("HTTP/", "").trim());
@@ -139,6 +168,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					int httpIndex = request.lastIndexOf("HTTP/");
 					
 					if (firstSpaceIndex < 0 || httpIndex < 0) {
+						report(EventSeverity.WARNING, "http-parse", "REQUEST-LINE", "Could not parse request line: " + request, null);
 						throw new ParseException("Could not parse request line: " + request, 0);
 					}
 					method = request.substring(0, firstSpaceIndex);
@@ -171,6 +201,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					part = new PlainMimeEmptyPart(null);
 				}
 				else {
+					report(EventSeverity.WARNING, "http-parse", "NO-HEADERS", "No headers found for method: " + method, null);
 					throw new ParseException("No headers found for the method '" + method + "'", 3);
 				}
 			}
@@ -187,11 +218,13 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					// we set the error offset to 1 for that particular error to be able to recognize it
 					// other parse exceptions should bubble up
 					if (e.getErrorOffset() != 1) {
+						report(EventSeverity.WARNING, "http-parse", "INCORRECT-HEADERS", "Could not parse the headers", e);
 						throw e;
 					}
 				}
 				// if we did not find the headers in the allotted space, throw an exception
 				if (headers == null && limitedBuffer.remainingSpace() == 0) {
+					report(EventSeverity.WARNING, "http-parse", "LONG-HEADERS", "No headers found within the size limit of " + maxHeaderSize + " bytes", null);
 					throw new HTTPException(431, "No headers found within the size limit: " + maxHeaderSize + " bytes");
 				}
 				else if (headers != null) {
@@ -215,6 +248,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 						break parse;
 					}
 					else if (!"chunked".equals(transferEncoding)) {
+						report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null);
 						// throw the exception code for length required
 						throw new HTTPException(411, "No content-length provided and not using chunked");
 					}
@@ -229,6 +263,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				}
 				resource = getDataProvider().newResource(method, target, version, headers);
 				if (resource == null) {
+					report(EventSeverity.WARNING, "http-parse", "NO-DATA-PROVIDER", "No data provider available for: " + request + ", headers: " + Arrays.asList(headers), null);
 					throw new ParseException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers), 2);
 				}
 			}
@@ -279,6 +314,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				}
 				else {
 					if (initialBuffer.remainingData() != writable.write(initialBuffer)) {
+						report(EventSeverity.WARNING, "http-parse", "TOO-BIG", "The backing resource does not have enough space for: " + contentLength, null);
 						throw new HTTPException(413, "The backing resource does not have enough space");
 					}
 					// we have reached the end

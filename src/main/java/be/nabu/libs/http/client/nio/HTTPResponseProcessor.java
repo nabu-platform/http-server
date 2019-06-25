@@ -96,9 +96,12 @@ public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPRespo
 				httpResponseFuture.setResponse(response);
 				futures.remove(request);
 			}
-			if (!HTTPUtils.keepAlive(response)) {
-				PipelineUtils.getPipeline().close();
-			}
+			// questionable code? the response writer is supposed to check & enforce this
+			// at this point we might be closing the connection before we had a chance to stream back the response
+//			if (!HTTPUtils.keepAlive(response)) {
+//				PipelineUtils.getPipeline().close();
+//			}
+			
 //			return super.process(securityContext, sourceContext, response);
 			return null;
 		}

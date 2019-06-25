@@ -2,6 +2,7 @@ package be.nabu.libs.http.client.nio;
 
 import java.util.Deque;
 
+import be.nabu.libs.events.api.EventTarget;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.MessageDataProvider;
@@ -16,15 +17,17 @@ public class HTTPResponseParserFactory implements MessageParserFactory<HTTPRespo
 	private Integer maxInitialLineLength;
 	private Integer maxHeaderSize;
 	private Integer maxChunkSize;
+	private EventTarget target;
 
-	public HTTPResponseParserFactory(MessageDataProvider provider, Deque<HTTPRequest> queue) {
+	public HTTPResponseParserFactory(MessageDataProvider provider, Deque<HTTPRequest> queue, EventTarget target) {
 		this.provider = provider;
 		this.queue = queue;
+		this.target = target;
 	}
 	
 	@Override
 	public MessageParser<HTTPResponse> newMessageParser() {
-		HTTPResponseParser parser = new HTTPResponseParser(provider, queue);
+		HTTPResponseParser parser = new HTTPResponseParser(provider, queue, target);
 		if (maxInitialLineLength != null) {
 			parser.getMessageFramer().setMaxInitialLineLength(maxInitialLineLength);
 		}
