@@ -122,6 +122,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 		
 		// make sure any requested connection closing is also enforced in the server
 		if (!HTTPUtils.keepAlive(request) && response.getContent() != null) {
+			response.getContent().removeHeader("Connection");
 			response.getContent().setHeader(new MimeHeader("Connection", "close"));
 		}
 		

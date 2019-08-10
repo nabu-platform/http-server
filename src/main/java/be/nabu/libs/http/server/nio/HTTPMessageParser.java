@@ -143,6 +143,10 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				request = null;
 			}
 			else {
+				// it really should end with a \r at this point
+				if (request.endsWith("\r")) {
+					request = request.substring(0, request.length() - 1);
+				}
 				if (request.contains("%00")) {
 					report(EventSeverity.WARNING, "http-parse", "NUL", "Request/response line contains encoded NUL character", null);
 					throw new ParseException("Request line contains encoded NUL character, this is not allowed", 0);
