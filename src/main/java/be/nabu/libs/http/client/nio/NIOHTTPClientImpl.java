@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -64,6 +65,14 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	private EventDispatcher dispatcher;
 	private Thread thread;
 	
+	public NIOHTTPClientImpl(SSLContext sslContext, ExecutorService ioExecutors, ExecutorService processExecutors, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler) {
+		this.maxConnectionsPerServer = maxConnectionsPerServer;
+		this.dispatcher = dispatcher;
+		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider);
+		this.client = new NIOClientImpl(sslContext, ioExecutors, processExecutors, pipelineFactory, dispatcher);
+		startClient();
+	}
+	
 	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, final ThreadFactory threadFactory) {
 		this.maxConnectionsPerServer = maxConnectionsPerServer;
 		this.dispatcher = dispatcher;
@@ -76,6 +85,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				return thread;
 			}
 		});
+		startClient();
+	}
+
+	private void startClient() {
 		thread = new Thread(new Runnable() {
 			public void run() {
 				try {
