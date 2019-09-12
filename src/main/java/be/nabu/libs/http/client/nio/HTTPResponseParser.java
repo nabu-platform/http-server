@@ -10,18 +10,18 @@ import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.server.nio.HTTPMessageParser;
-import be.nabu.libs.nio.api.MessageParser;
+import be.nabu.libs.nio.api.StreamingMessageParser;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.PushbackContainer;
 
-public class HTTPResponseParser implements MessageParser<HTTPResponse> {
+public class HTTPResponseParser implements StreamingMessageParser<HTTPResponse> {
 
 	private HTTPMessageParser messageFramer;
 	private Deque<HTTPRequest> queue;
 	
-	public HTTPResponseParser(MessageDataProvider dataProvider, Deque<HTTPRequest> queue, EventTarget target) {
+	public HTTPResponseParser(MessageDataProvider dataProvider, Deque<HTTPRequest> queue, EventTarget target, boolean streamingMode) {
 		this.queue = queue;
-		this.messageFramer = new HTTPMessageParser(dataProvider, true, target);
+		this.messageFramer = new HTTPMessageParser(dataProvider, true, target, streamingMode);
 	}
 
 	@Override
@@ -64,6 +64,11 @@ public class HTTPResponseParser implements MessageParser<HTTPResponse> {
 
 	protected HTTPMessageParser getMessageFramer() {
 		return messageFramer;
+	}
+
+	@Override
+	public boolean isStreamed() {
+		return messageFramer.isStreamed();
 	}
 
 }

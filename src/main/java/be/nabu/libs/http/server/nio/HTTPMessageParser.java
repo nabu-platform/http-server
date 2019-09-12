@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,8 +20,8 @@ import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.http.core.ServerHeader;
 import be.nabu.libs.nio.PipelineUtils;
-import be.nabu.libs.nio.api.MessageParser;
 import be.nabu.libs.nio.api.Pipeline;
+import be.nabu.libs.nio.api.StreamingMessageParser;
 import be.nabu.libs.resources.api.LocatableResource;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
@@ -31,18 +33,25 @@ import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.CharBuffer;
 import be.nabu.utils.io.api.DelimitedCharContainer;
+import be.nabu.utils.io.api.EventfulSubscriber;
+import be.nabu.utils.io.api.EventfulSubscription;
 import be.nabu.utils.io.api.PushbackContainer;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.api.WritableContainer;
 import be.nabu.utils.io.buffers.bytes.ByteBufferFactory;
 import be.nabu.utils.io.buffers.bytes.CyclicByteBuffer;
 import be.nabu.utils.io.buffers.bytes.DynamicByteBuffer;
+import be.nabu.utils.io.containers.EventfulContainerImpl;
+import be.nabu.utils.io.containers.SynchronizedReadableContainer;
+import be.nabu.utils.io.containers.SynchronizedWritableContainer;
 import be.nabu.utils.io.containers.chars.ReadableStraightByteToCharContainer;
 import be.nabu.utils.mime.api.Header;
 import be.nabu.utils.mime.api.ModifiablePart;
+import be.nabu.utils.mime.impl.MimeContentTransferTranscoder;
 import be.nabu.utils.mime.impl.MimeHeader;
 import be.nabu.utils.mime.impl.MimeParser;
 import be.nabu.utils.mime.impl.MimeUtils;
+import be.nabu.utils.mime.impl.PlainMimeContentPart;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 import be.nabu.utils.mime.util.ChunkedReadableByteContainer;
 import be.nabu.utils.mime.util.ChunkedWritableByteContainer;
@@ -51,7 +60,7 @@ import be.nabu.utils.mime.util.ChunkedWritableByteContainer;
  * TODO Optimization: search straight in the bytes of the dynamic for the combination "\r\n\r\n" (or \n\n) before parsing the request+headers
  * Unlikely to do much though as standard packets are up to 64kb in size and standard headers are 0.5-2kb in size in general so they should almost always arrive in a single block
  */
-public class HTTPMessageParser implements MessageParser<ModifiablePart> {
+public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart> {
 
 	public static final int COPY_SIZE = 8192;
 	
@@ -61,12 +70,14 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	private Header [] headers;
 	private MessageDataProvider dataProvider;
 	private Resource resource;
-	private WritableContainer<ByteBuffer> writable;
+	private WritableContainer<ByteBuffer> writable, chunkedWritable;
 	private ChunkedReadableByteContainer chunked;
 	private ModifiablePart part;
 	private byte [] pair = new byte[2];
 	private ByteBuffer copyBuffer = new CyclicByteBuffer(COPY_SIZE);
 	private boolean allowNoContent = Boolean.parseBoolean(System.getProperty("http.allowNoContent", "true"));
+	private boolean streamingMode = false;
+	private volatile boolean streamingDone = false;
 	
 	private String request;
 	private long totalRead, totalChunkRead;
@@ -87,6 +98,8 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	 */
 	private boolean isResponse;
 	
+	private ByteBuffer streamingBuffer;
+	
 	/**
 	 * When writing to the backend, do we want to include the headers?
 	 * In most cases yes because they tell you something about the payload
@@ -101,9 +114,14 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 	}
 	
 	public HTTPMessageParser(MessageDataProvider dataProvider, boolean isResponse, EventTarget eventTarget) {
+		this(dataProvider, isResponse, eventTarget, false);
+	}
+	
+	public HTTPMessageParser(MessageDataProvider dataProvider, boolean isResponse, EventTarget eventTarget, boolean streamingMode) {
 		this.dataProvider = dataProvider;
 		this.isResponse = isResponse;
 		this.eventTarget = eventTarget;
+		this.streamingMode = streamingMode;
 		initialBuffer = new DynamicByteBuffer();
 		initialBuffer.mark();
 	}
@@ -124,6 +142,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 		}
 	}
 	
+	@SuppressWarnings("resource")
 	@Override
 	public void push(PushbackContainer<ByteBuffer> content) throws IOException, ParseException {
 		if (request == null) {
@@ -180,9 +199,9 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 //					target = request.substring(firstSpaceIndex + 1, httpIndex).trim().replaceFirst("[/]{2,}", "/");
 					target = request.substring(firstSpaceIndex + 1, httpIndex).trim();
 					version = new Double(request.substring(httpIndex).replaceFirst("HTTP/", "").trim());
-					if (logger.isDebugEnabled()) {
-						logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") first line: {}", request);
-					}
+				}
+				if (logger.isDebugEnabled()) {
+					logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") first line: {}", request);
 				}
 			}
 		}
@@ -239,8 +258,138 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 				}
 			}
 		}
-		parse: if (headers != null && !isDone()) {
-			if (resource == null) {
+		if (!streamingMode) {
+			parse: if (headers != null && !isDone()) {
+				if (resource == null) {
+					contentLength = MimeUtils.getContentLength(headers);
+					if (contentLength == null) {
+						String transferEncoding = MimeUtils.getTransferEncoding(headers);
+						// if no content length or encoding, we don't have an (allowed) content, check if this is ok for the method
+						if (transferEncoding == null && allowWithoutContent(method)) {
+							isDone = true;
+							part = new PlainMimeEmptyPart(null, headers);
+							content.pushback(initialBuffer);
+							break parse;
+						}
+						else if (!"chunked".equals(transferEncoding)) {
+							report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null);
+							// throw the exception code for length required
+							throw new HTTPException(411, "No content-length provided and not using chunked");
+						}
+						chunked = new ChunkedReadableByteContainer(initialBuffer);
+						chunked.setMaxChunkSize(maxChunkSize);
+					}
+					else if (contentLength == 0) {
+						isDone = true;
+						part = new PlainMimeEmptyPart(null, headers);
+						content.pushback(initialBuffer);
+						break parse;
+					}
+					resource = getDataProvider().newResource(method, target, version, headers);
+					if (resource == null) {
+						report(EventSeverity.WARNING, "http-parse", "NO-DATA-PROVIDER", "No data provider available for: " + request + ", headers: " + Arrays.asList(headers), null);
+						throw new ParseException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers), 2);
+					}
+				}
+				if (writable == null) {
+					writable = ((WritableResource) resource).getWritable();
+					if (includeHeaders) {
+						for (Header header : headers) {
+							writable.write(IOUtils.wrap(header.toString().getBytes("ASCII"), true));
+							writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
+						}
+						writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
+					}
+					if (chunked != null) {
+						writable = new ChunkedWritableByteContainer(writable, false);
+					}
+				}
+				// @2017-03-22: the loop that follows assumes that the initial buffer contains at most contentLength amount of data, this is true if the headers are sent separately which is almost always the case (99.999% of the time)
+				// if however you send it as one tcp packet and there is more data, the loop breaks due to bad design at line 231 (should use local var) and 255 (don't write the entire buffer but a limited version)
+				// this almost never occurs but if it does, the message never gets finished and the selection key will trigger indefinitely for the EOS to be read!! quick fix is the following if
+				// proper refactor needed at some point but it is complex code so needs proper testing
+				if (contentLength != null && initialBuffer.remainingData() > contentLength) {
+					content.pushback(initialBuffer);
+				}
+				long read = 0;
+				while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
+					totalRead += initialBuffer.remainingData();
+					if (chunked != null) {
+						long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
+						// if the chunk is done, stop
+						if (chunked.isFinished()) {
+							if (chunkRead > 0) {
+								totalChunkRead += chunkRead;
+							}
+							Header[] additionalHeaders = chunked.getAdditionalHeaders();
+							// add a content length header for information
+							if (additionalHeaders == null || MimeUtils.getContentLength(additionalHeaders) == null) {
+								List<Header> finalHeaders = new ArrayList<Header>();
+								finalHeaders.addAll(Arrays.asList(additionalHeaders));
+								finalHeaders.add(new MimeHeader("Content-Length", "" + totalChunkRead));
+								additionalHeaders = finalHeaders.toArray(new Header[finalHeaders.size()]);
+							}
+							((ChunkedWritableByteContainer) writable).finish(additionalHeaders);
+							writable.close();
+							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
+							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
+							isDone = true;
+						}
+						else {
+							totalChunkRead += chunkRead;
+						}
+					}
+					else {
+						if (initialBuffer.remainingData() != writable.write(initialBuffer)) {
+							report(EventSeverity.WARNING, "http-parse", "TOO-BIG", "The backing resource does not have enough space for: " + contentLength, null);
+							throw new HTTPException(413, "The backing resource does not have enough space");
+						}
+						// we have reached the end
+						if (totalRead == contentLength) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") finished reading {} bytes", totalRead - initialBuffer.remainingData());
+							}
+							writable.close();
+							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
+							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
+							isDone = true;
+						}
+					}
+					// don't take anything into account that is not processed
+					totalRead -= initialBuffer.remainingData();
+				}
+				if (isDone() && initialBuffer.remainingData() > 0) {
+					content.pushback(initialBuffer);
+				}
+				if (read == -1) {
+					isClosed = true;
+				}
+			}
+			
+			// always remove these headers, they should not be coming from the client, not even in a proxy situation
+			if (part != null) {
+				part.removeHeader(ServerHeader.RESOURCE_URI.getName());
+				part.removeHeader(ServerHeader.REQUEST_RECEIVED.getName());
+			}
+			
+			if (part != null && resource instanceof LocatableResource) {
+				HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getUri().toString());
+			}
+			
+			// set the timestamp that it was received
+			if (part != null) {
+				part.setHeader(new MimeHeader(ServerHeader.REQUEST_RECEIVED.getName(), HTTPUtils.formatDate(new Date())));
+			}
+			
+			// it is possible that the message provider did something to the resource it managed that altered the part that came back from the parsing
+			// in this can we can enrich it again to be the original part
+			// for example the broker message provider will stream directly to the filesystem but will strip the authorization header
+			if (part != null && getDataProvider() instanceof EnrichingMessageDataProvider) {
+				((EnrichingMessageDataProvider) getDataProvider()).enrich(part, method, target, version, headers);
+			}
+		}
+		else {
+			parse: if (headers != null && !isDone) {
 				contentLength = MimeUtils.getContentLength(headers);
 				if (contentLength == null) {
 					String transferEncoding = MimeUtils.getTransferEncoding(headers);
@@ -249,6 +398,7 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 						isDone = true;
 						part = new PlainMimeEmptyPart(null, headers);
 						content.pushback(initialBuffer);
+						streamingDone = true;
 						break parse;
 					}
 					else if (!"chunked".equals(transferEncoding)) {
@@ -263,106 +413,131 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 					isDone = true;
 					part = new PlainMimeEmptyPart(null, headers);
 					content.pushback(initialBuffer);
+					streamingDone = true;
 					break parse;
 				}
-				resource = getDataProvider().newResource(method, target, version, headers);
-				if (resource == null) {
-					report(EventSeverity.WARNING, "http-parse", "NO-DATA-PROVIDER", "No data provider available for: " + request + ", headers: " + Arrays.asList(headers), null);
-					throw new ParseException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers), 2);
+				// quick fix, see above
+				if (contentLength != null && initialBuffer.remainingData() > contentLength) {
+					content.pushback(initialBuffer);
 				}
-			}
-			if (writable == null) {
-				writable = ((WritableResource) resource).getWritable();
-				if (includeHeaders) {
-					for (Header header : headers) {
-						writable.write(IOUtils.wrap(header.toString().getBytes("ASCII"), true));
-						writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
-					}
-					writable.write(IOUtils.wrap("\r\n".getBytes("ASCII"), true));
-				}
-				if (chunked != null) {
-					writable = new ChunkedWritableByteContainer(writable, false);
-				}
-			}
-			// @2017-03-22: the loop that follows assumes that the initial buffer contains at most contentLength amount of data, this is true if the headers are sent separately which is almost always the case (99.999% of the time)
-			// if however you send it as one tcp packet and there is more data, the loop breaks due to bad design at line 231 (should use local var) and 255 (don't write the entire buffer but a limited version)
-			// this almost never occurs but if it does, the message never gets finished and the selection key will trigger indefinitely for the EOS to be read!! quick fix is the following if
-			// proper refactor needed at some point but it is complex code so needs proper testing
-			if (contentLength != null && initialBuffer.remainingData() > contentLength) {
-				content.pushback(initialBuffer);
-			}
-			long read = 0;
-			while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
-				totalRead += initialBuffer.remainingData();
-				if (chunked != null) {
-					long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
-					// if the chunk is done, stop
-					if (chunked.isFinished()) {
-						Header[] additionalHeaders = chunked.getAdditionalHeaders();
-						// add a content length header for information
-						if (additionalHeaders == null || MimeUtils.getContentLength(additionalHeaders) == null) {
-							List<Header> finalHeaders = new ArrayList<Header>();
-							finalHeaders.addAll(Arrays.asList(additionalHeaders));
-							finalHeaders.add(new MimeHeader("Content-Length", "" + totalChunkRead));
-							additionalHeaders = finalHeaders.toArray(new Header[finalHeaders.size()]);
+				// we make the buffer a lot bigger than we actually ship back and forth so we have some room left for overreads (especially for chunked), we also need some wiggle room for gzip finalization...
+				streamingBuffer = IOUtils.newByteBuffer(COPY_SIZE * 6, true);
+				Lock lock = new ReentrantLock();
+				isDone = true;
+				// if we get here, we have a content part, either regular or chunked
+//				part = new RetrievedContentPart(new SynchronizedReadableContainer<ByteBuffer>(streamingBuffer, lock), headers);
+				writable = streamingBuffer;
+//				if (chunked != null) {
+//					writable = new ChunkedWritableByteContainer(writable, false);
+//					chunkedWritable = writable;
+//				}
+				String contentEncoding = MimeUtils.getContentEncoding(headers);
+				MimeContentTransferTranscoder transcoder = new MimeContentTransferTranscoder();
+				// we reverse the order because we are doing it on write now instead of read
+				// decode any content encoding (e.g. gzip)
+//				writable = transcoder.decodeContent(contentEncoding, writable);
+//				// decode any transfer encoding (e.g. base64)
+//				writable = transcoder.decodeTransfer(MimeUtils.getContentTransferEncoding(headers), writable);
+//				writable = transcoder.decodeContent(MimeUtils.getTransferEncoding(headers), writable);
+				writable = new SynchronizedWritableContainer<ByteBuffer>(writable, lock);
+
+				ReadableContainer<ByteBuffer> readable = streamingBuffer;
+				readable = transcoder.decodeContent(contentEncoding, readable);
+				readable = new SynchronizedReadableContainer<ByteBuffer>(readable, lock);
+				
+				// we wrap events around them
+				EventfulContainerImpl<ByteBuffer> eventfulContainer = new EventfulContainerImpl<ByteBuffer>(IOUtils.wrap(readable, writable));
+				writable = eventfulContainer;
+				
+				// if new space opens up on the container (by act of reading it), pump new data to it
+				Pipeline pipeline = PipelineUtils.getPipeline();
+				eventfulContainer.availableSpace(new EventfulSubscriber() {
+					@Override
+					public void on(EventfulSubscription subscription) {
+//						System.out.println("--------------------------------> [" + pipeline.hashCode() + "] triggering available data " + streamingBuffer.remainingData() + " / " + initialBuffer.remainingData() + " / " + isDone + " && " + streamingDone);
+						if (streamingBuffer.remainingData() == 0 && !streamingDone) {
+							pipeline.read();
 						}
-						((ChunkedWritableByteContainer) writable).finish(additionalHeaders);
-						writable.close();
-						// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
-						part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
-						isDone = true;
+					}
+				});
+				
+				part = new PlainMimeContentPart(null, eventfulContainer, headers);
+				// if we have some form of content encoding, we will undo it and redo it, ending up with a potentially different size
+				// set it from fixed contentlength (if any) to chunked (if not set)
+				if (contentEncoding != null && contentLength != null) {
+					part.removeHeader("Content-Length");
+					if (chunked == null) {
+						part.setHeader(new MimeHeader("Transfer-Encoding", "chunked"));
+					}
+				}
+			}
+			// if we are done but the streaming isn't, we need to copy more data into the streamingbuffer (if we can)
+			if (isDone && !streamingDone) {
+				long read = 0;
+				// we want to keep some space open in the streamingbuffer at all times (for the chunked finalization bits)
+				while (!streamingDone && streamingBuffer.remainingSpace() > COPY_SIZE * 5 && 
+						(initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(streamingBuffer.remainingSpace() - (COPY_SIZE * 5), contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
+					totalRead += initialBuffer.remainingData();
+					
+					if (chunked != null) {
+						long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
+						// if the chunk is done, stop
+						if (chunked.isFinished()) {
+							if (chunkRead > 0) {
+								totalChunkRead += chunkRead;
+							}
+							if (copyBuffer.remainingData() > 0) {
+								totalChunkRead += writable.write(copyBuffer);
+							}
+							if (copyBuffer.remainingData() == 0) {
+//								System.out.println("-----------------------------------> [" + PipelineUtils.getPipeline().hashCode() + "] Remaining space for finalization: " + streamingBuffer.remainingSpace());
+//								System.out.println("-----------------------------------> [" + PipelineUtils.getPipeline().hashCode() + "] Read from source: " + (totalRead - initialBuffer.remainingData()));
+//								System.out.println("-----------------------------------> [" + PipelineUtils.getPipeline().hashCode() + "] Chunk read: " + totalChunkRead + " => " + chunked.read(copyBuffer));
+								Header[] additionalHeaders = chunked.getAdditionalHeaders();
+								// add a content length header for information
+								if (additionalHeaders == null || MimeUtils.getContentLength(additionalHeaders) == null) {
+									List<Header> finalHeaders = new ArrayList<Header>();
+									finalHeaders.addAll(Arrays.asList(additionalHeaders));
+									finalHeaders.add(new MimeHeader("Content-Length", "" + totalChunkRead));
+									additionalHeaders = finalHeaders.toArray(new Header[finalHeaders.size()]);
+								}
+								// flush the writable so we can add headers at a lower level
+	//							writable.flush();
+	//							((ChunkedWritableByteContainer) chunkedWritable).finish(additionalHeaders);
+//								writable.close();
+								streamingBuffer.close();
+								streamingDone = true;
+							}
+						}
+						else {
+							totalChunkRead += chunkRead;
+						}
 					}
 					else {
-						totalChunkRead += chunkRead;
-					}
-				}
-				else {
-					if (initialBuffer.remainingData() != writable.write(initialBuffer)) {
-						report(EventSeverity.WARNING, "http-parse", "TOO-BIG", "The backing resource does not have enough space for: " + contentLength, null);
-						throw new HTTPException(413, "The backing resource does not have enough space");
-					}
-					// we have reached the end
-					if (totalRead == contentLength) {
-						if (logger.isDebugEnabled()) {
-							logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") finished reading {} bytes", totalRead - initialBuffer.remainingData());
+						// this might not write all the data in the buffer
+						writable.write(initialBuffer);
+						// we have reached the end
+						if ((totalRead - initialBuffer.remainingData()) == contentLength) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") finished reading {} bytes", totalRead - initialBuffer.remainingData());
+							}
+							writable.close();
+							streamingDone = true;
 						}
-						writable.close();
-						// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
-						part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
-						isDone = true;
 					}
+					// don't take anything into account that is not processed
+					totalRead -= initialBuffer.remainingData();
 				}
-				// don't take anything into account that is not processed
-				totalRead -= initialBuffer.remainingData();
+				// push back whatever remains after streaming
+				if (streamingDone && initialBuffer.remainingData() > 0) {
+					content.pushback(initialBuffer);
+				}
+				// if we got to the end, signal the closure and the streaming that is done
+				if (read == -1) {
+					isClosed = true;
+					streamingDone = true;
+				}
 			}
-			if (isDone() && initialBuffer.remainingData() > 0) {
-				content.pushback(initialBuffer);
-			}
-			if (read == -1) {
-				isClosed = true;
-			}
-		}
-		
-		// always remove these headers, they should not be coming from the client, not even in a proxy situation
-		if (part != null) {
-			part.removeHeader(ServerHeader.RESOURCE_URI.getName());
-			part.removeHeader(ServerHeader.REQUEST_RECEIVED.getName());
-		}
-		
-		if (part != null && resource instanceof LocatableResource) {
-			HTTPUtils.setHeader(part, ServerHeader.RESOURCE_URI, ((LocatableResource) resource).getUri().toString());
-		}
-		
-		// set the timestamp that it was received
-		if (part != null) {
-			part.setHeader(new MimeHeader(ServerHeader.REQUEST_RECEIVED.getName(), HTTPUtils.formatDate(new Date())));
-		}
-		
-		// it is possible that the message provider did something to the resource it managed that altered the part that came back from the parsing
-		// in this can we can enrich it again to be the original part
-		// for example the broker message provider will stream directly to the filesystem but will strip the authorization header
-		if (part != null && getDataProvider() instanceof EnrichingMessageDataProvider) {
-			((EnrichingMessageDataProvider) getDataProvider()).enrich(part, method, target, version, headers);
 		}
 	}
 	
@@ -391,7 +566,15 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 
 	@Override
 	public ModifiablePart getMessage() {
-		return part;
+		if (streamingMode) {
+			// unset on read, we don't want to keep retriggering, bit of a dirty hack...
+			ModifiablePart part = this.part;
+			this.part = null;
+			return part;
+		}
+		else {
+			return part;
+		}
 	}
 
 	@Override
@@ -460,6 +643,15 @@ public class HTTPMessageParser implements MessageParser<ModifiablePart> {
 
 	public void setMaxChunkSize(int maxChunkSize) {
 		this.maxChunkSize = maxChunkSize;
+	}
+
+	@Override
+	public boolean isStreamed() {
+		// if we do not operate in streaming mode, it is always done streaming
+		if (!streamingMode) {
+			return true;
+		}
+		return streamingDone;
 	}
 	
 }

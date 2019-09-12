@@ -18,16 +18,18 @@ public class HTTPResponseParserFactory implements MessageParserFactory<HTTPRespo
 	private Integer maxHeaderSize;
 	private Integer maxChunkSize;
 	private EventTarget target;
-
-	public HTTPResponseParserFactory(MessageDataProvider provider, Deque<HTTPRequest> queue, EventTarget target) {
+	private boolean streamingMode;
+	
+	public HTTPResponseParserFactory(MessageDataProvider provider, Deque<HTTPRequest> queue, EventTarget target, boolean streamingMode) {
 		this.provider = provider;
 		this.queue = queue;
 		this.target = target;
+		this.streamingMode = streamingMode;
 	}
 	
 	@Override
 	public MessageParser<HTTPResponse> newMessageParser() {
-		HTTPResponseParser parser = new HTTPResponseParser(provider, queue, target);
+		HTTPResponseParser parser = new HTTPResponseParser(provider, queue, target, streamingMode);
 		if (maxInitialLineLength != null) {
 			parser.getMessageFramer().setMaxInitialLineLength(maxInitialLineLength);
 		}

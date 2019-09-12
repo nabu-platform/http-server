@@ -65,18 +65,22 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	private EventDispatcher dispatcher;
 	private Thread thread;
 	
-	public NIOHTTPClientImpl(SSLContext sslContext, ExecutorService ioExecutors, ExecutorService processExecutors, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler) {
+	public NIOHTTPClientImpl(SSLContext sslContext, ExecutorService ioExecutors, ExecutorService processExecutors, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, boolean streamingMode) {
 		this.maxConnectionsPerServer = maxConnectionsPerServer;
 		this.dispatcher = dispatcher;
-		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider);
+		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider, streamingMode);
 		this.client = new NIOClientImpl(sslContext, ioExecutors, processExecutors, pipelineFactory, dispatcher);
 		startClient();
 	}
-	
+
 	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, final ThreadFactory threadFactory) {
+		this(sslContext, ioPoolSize, processPoolSize, maxConnectionsPerServer, dispatcher, messageDataProvider, cookieHandler, threadFactory, false);
+	}
+	
+	public NIOHTTPClientImpl(SSLContext sslContext, int ioPoolSize, int processPoolSize, int maxConnectionsPerServer, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, CookieHandler cookieHandler, final ThreadFactory threadFactory, boolean streamingMode) {
 		this.maxConnectionsPerServer = maxConnectionsPerServer;
 		this.dispatcher = dispatcher;
-		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider);
+		pipelineFactory = new HTTPClientPipelineFactory(this, cookieHandler, futures, dispatcher, messageDataProvider, streamingMode);
 		this.client = new NIOClientImpl(sslContext, ioPoolSize, processPoolSize, pipelineFactory, dispatcher, new ThreadFactory() {
 			@Override
 			public Thread newThread(Runnable r) {

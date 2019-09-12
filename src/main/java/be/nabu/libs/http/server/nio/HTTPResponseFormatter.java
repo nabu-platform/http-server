@@ -13,14 +13,19 @@ import be.nabu.libs.http.api.LinkableHTTPResponse;
 import be.nabu.libs.nio.api.MessageFormatter;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
+import be.nabu.utils.io.api.EventfulReadableContainer;
+import be.nabu.utils.io.api.EventfulSubscriber;
+import be.nabu.utils.io.api.EventfulSubscription;
 import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.containers.ReadableContainerChainer;
 import be.nabu.utils.mime.impl.PullableMimeFormatter;
 
 public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 	
 	private Logger logger = LoggerFactory.getLogger(getClass());
+	public static boolean STREAMING_MODE = Boolean.parseBoolean(System.getProperty("http.streamingMode", "false"));
 	
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({ "unchecked", "resource" })
 	@Override
 	public ReadableContainer<ByteBuffer> format(HTTPResponse message) {
 		if (logger.isDebugEnabled()) {
@@ -38,7 +43,6 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 				logger.debug("[OUTBOUND] Response (" + hashCode() + ") headers: " + Arrays.asList(message.getContent().getHeaders()));
 			}
 		}
-		
 		byte [] firstLine = ("HTTP/" + message.getVersion() + " " + message.getCode() + " " + message.getMessage() + "\r\n").getBytes(Charset.forName("ASCII"));
 
 		// no content, just write the ending
@@ -46,7 +50,7 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 			return IOUtils.chain(true, IOUtils.wrap(firstLine, true), IOUtils.wrap("\r\n".getBytes(Charset.forName("ASCII")), true));
 		}
 		
-		PullableMimeFormatter formatter = new PullableMimeFormatter();
+		PullableMimeFormatter formatter = STREAMING_MODE ? new StreamableMimeFormatter() : new PullableMimeFormatter();
 		// internet explorer does not support header folding
 		formatter.setFoldHeader(false);
 		formatter.setOptimizeCompression(true);
@@ -64,6 +68,27 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 			}
 			throw new RuntimeException(e);
 		}
-		return IOUtils.chain(true, IOUtils.wrap(firstLine, true), formatter);
+		ReadableContainerChainer<ByteBuffer> chained = new ReadableContainerChainer<ByteBuffer>(true, IOUtils.wrap(firstLine, true), formatter);
+		if (STREAMING_MODE) {
+				chained.setAllowEmptyReads(STREAMING_MODE);
+				return new EventfulReadableContainer<ByteBuffer>() {
+					@Override
+					public long read(ByteBuffer buffer) throws IOException {
+						return chained.read(buffer);
+					}
+					@Override
+					public void close() throws IOException {
+						chained.close();
+					}
+					@Override
+					public EventfulSubscription availableData(EventfulSubscriber subscriber) {
+						return ((StreamableMimeFormatter) formatter).availableData(subscriber);
+					}
+				};
+		}
+		else {
+			return chained;
+		}
+//		return IOUtils.chain(true, IOUtils.wrap(firstLine, true), formatter);
 	}
 }

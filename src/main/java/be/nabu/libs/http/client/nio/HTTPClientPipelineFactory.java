@@ -17,14 +17,11 @@ import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.server.MessageDataProvider;
 import be.nabu.libs.http.client.nio.NIOHTTPClientImpl.HTTPResponseFuture;
-import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.api.KeepAliveDecider;
 import be.nabu.libs.nio.api.NIOServer;
 import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.PipelineFactory;
 import be.nabu.libs.nio.impl.MessagePipelineImpl;
-import be.nabu.utils.mime.api.Header;
-import be.nabu.utils.mime.impl.MimeUtils;
 
 public class HTTPClientPipelineFactory implements PipelineFactory {
 	
@@ -34,13 +31,15 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 	private CookieHandler cookieHandler;
 	private Map<HTTPRequest, HTTPResponseFuture> futures;
 	private NIOHTTPClientImpl client;
+	private boolean streamingMode;
 
-	public HTTPClientPipelineFactory(NIOHTTPClientImpl client, CookieHandler cookieHandler, Map<HTTPRequest, HTTPResponseFuture> futures, EventDispatcher dispatcher, MessageDataProvider messageDataProvider) {
+	public HTTPClientPipelineFactory(NIOHTTPClientImpl client, CookieHandler cookieHandler, Map<HTTPRequest, HTTPResponseFuture> futures, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, boolean streamingMode) {
 		this.client = client;
 		this.cookieHandler = cookieHandler;
 		this.futures = futures;
 		this.dispatcher = dispatcher;
 		this.messageDataProvider = messageDataProvider;
+		this.streamingMode = streamingMode;
 	}
 	
 	@Override
@@ -58,7 +57,7 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 		MessagePipelineImpl<HTTPResponse, HTTPRequest> pipeline = new MessagePipelineImpl<HTTPResponse, HTTPRequest>(
 			server,
 			key,
-			new HTTPResponseParserFactory(messageDataProvider, queue, server),
+			new HTTPResponseParserFactory(messageDataProvider, queue, server, streamingMode),
 			new HTTPRequestFormatterFactory(queue),
 			new HTTPResponseProcessorFactory(client, cookieHandler, secure, dispatcher, exceptionFormatter, futures),
 			new KeepAliveDecider<HTTPRequest>() {
