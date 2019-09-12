@@ -18,8 +18,6 @@ import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.LinkableHTTPResponse;
 import be.nabu.libs.http.client.nio.NIOHTTPClientImpl.HTTPResponseFuture;
 import be.nabu.libs.http.core.HTTPUtils;
-import be.nabu.libs.http.server.PipelineUpgradeFactory;
-import be.nabu.libs.http.server.api.PipelineUpgrader;
 import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.ExceptionFormatter;
 import be.nabu.libs.nio.api.Pipeline;
