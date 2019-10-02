@@ -24,6 +24,7 @@ import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.SecurityContext;
 import be.nabu.libs.nio.api.SourceContext;
 import be.nabu.libs.nio.impl.EventDrivenMessageProcessor;
+import be.nabu.utils.cep.api.EventSeverity;
 import be.nabu.utils.cep.impl.CEPUtils;
 import be.nabu.utils.cep.impl.HTTPComplexEventImpl;
 import be.nabu.utils.mime.api.Header;
@@ -80,6 +81,11 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 	
 	@Override
 	public HTTPResponse process(SecurityContext securityContext, SourceContext sourceContext, final HTTPRequest request) {
+		if (request.getVersion() >= 1.1) {
+			if (MimeUtils.getHeader("Host", request.getContent().getHeaders()) == null) {
+				throw new HTTPException(400, "Missing host header");
+			}
+		}
 		HTTPComplexEventImpl event = null;
 		if (eventTarget != null) {
 			event = new HTTPComplexEventImpl();
@@ -94,10 +100,9 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				// too bad
 			}
 			event.setApplicationProtocol(securityContext.getSSLContext() != null ? "HTTPS" : "HTTP");
-		}
-		if (request.getVersion() >= 1.1) {
-			if (MimeUtils.getHeader("Host", request.getContent().getHeaders()) == null) {
-				throw new HTTPException(400, "Missing host header");
+			Header header = MimeUtils.getHeader("User-Agent", request.getContent().getHeaders());
+			if (header != null) {
+				event.setUserAgent(MimeUtils.getFullHeaderValue(header));
 			}
 		}
 		if (request.getContent() != null) {
@@ -132,6 +137,16 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			if (response != null) {
 				event.setSizeOut(MimeUtils.getContentLength(response.getContent().getHeaders()));
 				event.setResponseCode(response.getCode());
+				if (response.getCode() < 400) {
+					event.setSeverity(EventSeverity.DEBUG);
+				}
+				// in general this is "expected", a 403 is fishy though
+				else if (response.getCode() == 401) {
+					event.setSeverity(EventSeverity.DEBUG);
+				}
+				else {
+					event.setSeverity(EventSeverity.WARNING);
+				}
 			}
 			eventTarget.fire(event, this);
 		}
