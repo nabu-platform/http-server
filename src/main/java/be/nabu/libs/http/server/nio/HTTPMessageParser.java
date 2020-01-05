@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.events.api.EventTarget;
+import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.server.EnrichingMessageDataProvider;
 import be.nabu.libs.http.api.server.MessageDataProvider;
@@ -178,13 +179,19 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					}
 					int firstSpaceIndex = request.indexOf(' ');
 					int secondSpaceIndex = request.indexOf(' ', firstSpaceIndex + 1);
-					if (firstSpaceIndex < 0 || secondSpaceIndex < 0) {
+					if (firstSpaceIndex < 0) {
 						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null);
 						throw new ParseException("Could not parse response line: " + request, 0);
 					}
 					version = new Double(request.substring(0, firstSpaceIndex).replaceFirst("HTTP/", "").trim());
-					code = new Integer(request.substring(firstSpaceIndex + 1, secondSpaceIndex));
-					message = request.substring(secondSpaceIndex + 1);
+					code = new Integer(secondSpaceIndex < 0 ? request.substring(firstSpaceIndex + 1) : request.substring(firstSpaceIndex + 1, secondSpaceIndex));
+					// according to the spec, the "reason phrase" is actually optional
+					if (secondSpaceIndex >= 0) {
+						message = request.substring(secondSpaceIndex + 1).trim();
+					}
+					else {
+						message = HTTPCodes.getMessage(code);
+					}
 				}
 				else {
 					int firstSpaceIndex = request.indexOf(' ');
@@ -456,6 +463,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					public void on(EventfulSubscription subscription) {
 //						System.out.println("--------------------------------> [" + pipeline.hashCode() + "] triggering available data " + streamingBuffer.remainingData() + " / " + initialBuffer.remainingData() + " / " + isDone + " && " + streamingDone);
 						if (streamingBuffer.remainingData() == 0 && !streamingDone) {
+							pipeline.getServer().setReadInterest(pipeline.getSelectionKey(), true);
 							pipeline.read();
 						}
 					}
@@ -478,7 +486,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 				while (!streamingDone && streamingBuffer.remainingSpace() > COPY_SIZE * 5 && 
 						(initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(streamingBuffer.remainingSpace() - (COPY_SIZE * 5), contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
 					totalRead += initialBuffer.remainingData();
-					
+
 					if (chunked != null) {
 						long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
 						// if the chunk is done, stop
@@ -533,7 +541,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					content.pushback(initialBuffer);
 				}
 				// if we got to the end, signal the closure and the streaming that is done
-				if (read == -1) {
+				if (read <= -1) {
 					isClosed = true;
 					streamingDone = true;
 				}
