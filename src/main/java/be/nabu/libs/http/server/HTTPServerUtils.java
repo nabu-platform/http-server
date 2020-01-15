@@ -58,6 +58,10 @@ public class HTTPServerUtils {
 		return new RequestPathFilter(path, isRegex, true);
 	}
 	
+	public static EventHandler<HTTPResponse, Boolean> limitToRequestPath(String path, boolean isRegex, boolean isWhitelist, boolean useProxyPath) {
+		return new RequestPathFilter(path, isRegex, isWhitelist, useProxyPath);
+	}
+	
 	public static EventHandler<HTTPRequest, Boolean> limitToPath(String path, boolean isRegex) {
 		return new PathFilter(path, isRegex, true);
 	}
