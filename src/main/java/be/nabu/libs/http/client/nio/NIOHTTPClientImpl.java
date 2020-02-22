@@ -106,16 +106,24 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		thread.setDaemon(true);
 		thread.start();
 		Date date = new Date();
-		while (!client.isStarted()) {
-			if (new Date().getTime() - date.getTime() > 60000) {
-				throw new RuntimeException("Could not start nio client in time");
+		try {
+			// we clear the interrupted flag _before_ we start this loop, otherwise we can go straight into failure mode
+			Thread.interrupted();
+			while (!client.isStarted()) {
+				if (new Date().getTime() - date.getTime() > 60000) {
+					throw new RuntimeException("Could not start nio client in time");
+				}
+				try {
+					Thread.sleep(50);
+				}
+				catch (InterruptedException e) {
+					throw new RuntimeException("Interrupted while waiting for client to start");
+				}
 			}
-			try {
-				Thread.sleep(50);
-			}
-			catch (InterruptedException e) {
-				throw new RuntimeException("Interrupted while waiting for client to start");
-			}
+		}
+		catch (RuntimeException e) {
+			client.stop();
+			throw e;
 		}
 	}
 	

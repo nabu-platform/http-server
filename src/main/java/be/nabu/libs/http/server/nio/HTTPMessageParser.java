@@ -462,8 +462,12 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					@Override
 					public void on(EventfulSubscription subscription) {
 //						System.out.println("--------------------------------> [" + pipeline.hashCode() + "] triggering available data " + streamingBuffer.remainingData() + " / " + initialBuffer.remainingData() + " / " + isDone + " && " + streamingDone);
-						if (streamingBuffer.remainingData() == 0 && !streamingDone) {
-							pipeline.getServer().setReadInterest(pipeline.getSelectionKey(), true);
+//						if (streamingBuffer.remainingData() == 0 && !streamingDone) {
+//							pipeline.getServer().setReadInterest(pipeline.getSelectionKey(), true);
+//							pipeline.read();
+//						}
+						// if the streaming is not done and we have some room left, we want more information
+						if (streamingBuffer.remainingSpace() > COPY_SIZE * 5 && !streamingDone) {
 							pipeline.read();
 						}
 					}
