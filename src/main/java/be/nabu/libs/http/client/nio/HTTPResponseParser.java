@@ -18,9 +18,11 @@ public class HTTPResponseParser implements StreamingMessageParser<HTTPResponse> 
 
 	private HTTPMessageParser messageFramer;
 	private Deque<HTTPRequest> queue;
+	private boolean streamingMode;
 	
 	public HTTPResponseParser(MessageDataProvider dataProvider, Deque<HTTPRequest> queue, EventTarget target, boolean streamingMode) {
 		this.queue = queue;
+		this.streamingMode = streamingMode;
 		this.messageFramer = new HTTPMessageParser(dataProvider, true, target, streamingMode);
 	}
 
@@ -71,4 +73,8 @@ public class HTTPResponseParser implements StreamingMessageParser<HTTPResponse> 
 		return messageFramer.isStreamed();
 	}
 
+	@Override
+	public boolean isStreaming() {
+		return streamingMode;
+	}
 }
