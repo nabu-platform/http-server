@@ -38,7 +38,7 @@ public class DefaultHTTPExceptionFormatter implements ExceptionFormatter<HTTPReq
 			.replace("$message", exception.getMessage() == null ? HTTPCodes.getMessage(exception.getCode()) : exception.getMessage())
 			.replace("$stacktrace", stringWriter.toString());
 		byte [] bytes = errorMessage.getBytes(Charset.forName("UTF-8"));
-		return new DefaultHTTPResponse(exception.getCode(), HTTPCodes.getMessage(exception.getCode()), new PlainMimeContentPart(null, IOUtils.wrap(bytes, true), 
+		return new DefaultHTTPResponse(request, exception.getCode(), HTTPCodes.getMessage(exception.getCode()), new PlainMimeContentPart(null, IOUtils.wrap(bytes, true), 
 			new MimeHeader("Connection", "close"),
 			new MimeHeader("Content-Length", "" + bytes.length),
 			new MimeHeader("Content-Type", "text/html; charset=UTF-8")

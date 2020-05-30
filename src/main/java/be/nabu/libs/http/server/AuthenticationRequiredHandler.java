@@ -29,7 +29,7 @@ public class AuthenticationRequiredHandler implements EventHandler<HTTPRequest, 
 			if (challenge != null) {
 				content.setHeader(new MimeHeader("WWW-Authenticate", challenge));
 			}
-			return new DefaultHTTPResponse(401, HTTPCodes.getMessage(401), content);
+			return new DefaultHTTPResponse(event, 401, HTTPCodes.getMessage(401), content);
 		}
 		return null;
 	}

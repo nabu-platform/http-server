@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.events.api.EventSubscription;
+import be.nabu.libs.http.HTTPInterceptorManager;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.client.NIOHTTPClient;
@@ -133,7 +134,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	public Future<HTTPResponse> call(final HTTPRequest request, boolean secure) throws IOException, FormatException, ParseException {
+	public Future<HTTPResponse> call(HTTPRequest originalRequest, boolean secure) throws IOException, FormatException, ParseException {
+		// allow interception of requests
+		final HTTPRequest request = HTTPInterceptorManager.intercept(originalRequest);
+		
 		URI uri = HTTPUtils.getURI(request, secure);
 		int port = uri.getPort();
 		if (port < 0) {
@@ -324,13 +328,15 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 								// so let's check the processing future
 								Future<?> processFuture = ((MessagePipelineImpl<?, ?>) pipeline).getProcessFuture();
 								if (processFuture == null || processFuture.isDone()) {
+									logger.warn("We have no response and nothing is left to process, we are prematurely cancelling the http response future");
 									cancel(true);
 								}
 								else {
 									try {
-										processFuture.get(2, TimeUnit.SECONDS);
+										processFuture.get(30, TimeUnit.SECONDS);
 									}
 									catch (Exception e) {
+										logger.warn("Timed out waiting for process future, we are cancelling the http response future", e);
 										// do nothing
 									}
 									if (response == null) {
@@ -441,9 +447,13 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 //			authenticateSubscription.filter(new HandlerFilter(host, port));
 			authenticateSubscription.filter(new RequestFilter(request));
 		}
+		// there is no real use in doing the intercept in the call() as it uses different threads to perform the actual execution
 		Future<HTTPResponse> call = call(request, secure);
 		try {
-			return requestTimeout <= 0 ? call.get() : call.get(requestTimeout, TimeUnit.MILLISECONDS);
+			HTTPResponse response = requestTimeout <= 0 ? call.get() : call.get(requestTimeout, TimeUnit.MILLISECONDS);
+			// allow intercept of response
+			response = HTTPInterceptorManager.intercept(response);
+			return response;
 		}
 		catch (Exception e) {
 			// if the request failed for whatever reason (timeout for example), close the pipeline

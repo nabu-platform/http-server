@@ -24,10 +24,10 @@ public class RedirectHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	}
 	
 	@Override
-	public HTTPResponse handle(HTTPRequest arg0) {
+	public HTTPResponse handle(HTTPRequest request) {
 		try {
-			if (HTTPUtils.getURI(arg0, false).getPath().startsWith(path)) {
-				return new DefaultHTTPResponse(
+			if (HTTPUtils.getURI(request, false).getPath().startsWith(path)) {
+				return new DefaultHTTPResponse(request,
 						permanent ? 301 : 307, 
 						permanent ? HTTPCodes.getMessage(301) : HTTPCodes.getMessage(307), new PlainMimeEmptyPart(null, 
 					new MimeHeader("Location", redirect),
