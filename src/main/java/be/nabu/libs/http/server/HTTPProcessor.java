@@ -91,6 +91,9 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			event = new HTTPComplexEventImpl();
 			Pipeline pipeline = PipelineUtils.getPipeline();
 			CEPUtils.enrich(event, getClass(), "http-request", pipeline.getSourceContext().getSocketAddress(), null, null);
+			// set the correct source ip & host
+			event.setSourceIp(HTTPUtils.getRemoteAddress(isProxied, request.getContent().getHeaders()));
+			event.setSourceHost(HTTPUtils.getRemoteHost(isProxied, request.getContent().getHeaders()));
 			event.setStarted(new Date());
 			event.setMethod(request.getMethod());
 			try {

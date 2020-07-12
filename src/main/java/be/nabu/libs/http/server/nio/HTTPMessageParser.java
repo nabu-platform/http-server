@@ -665,5 +665,10 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 		}
 		return streamingDone;
 	}
+
+	@Override
+	public boolean isStreaming() {
+		return streamingMode;
+	}
 	
 }
