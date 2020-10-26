@@ -77,6 +77,11 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 	private byte [] pair = new byte[2];
 	private ByteBuffer copyBuffer = new CyclicByteBuffer(COPY_SIZE);
 	private boolean allowNoContent = Boolean.parseBoolean(System.getProperty("http.allowNoContent", "true"));
+	
+	// this refers to rfc2616 article 4.4 Message Length option 5
+	// i have only ever seen this in the wild in a single situation
+	// the behavior (if you disable this) is that the parser assumes there is no content and you get an empty response
+	private boolean allowNoMessageSizeForClosedConnections;
 	private boolean streamingMode = false;
 	private volatile boolean streamingDone = false;
 	
@@ -110,6 +115,9 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 
 	private EventTarget eventTarget;
 	
+	// set when we encounter a response (this can not be the case in requests!) that has no content length or chunked transfer encoding but the connection is marked as close
+	private boolean isUnlimitedResponse;
+	
 	public HTTPMessageParser(MessageDataProvider dataProvider, EventTarget target) {
 		this(dataProvider, false, target);
 	}
@@ -125,6 +133,10 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 		this.streamingMode = streamingMode;
 		initialBuffer = new DynamicByteBuffer();
 		initialBuffer.mark();
+		
+		// no content length _and_ no chunked is only allowed if you set connection close (otherwise you don't know when it ends)
+		// this in turn is only possible as a response, because if the request was immediately closed, the server could never send back a response
+		allowNoMessageSizeForClosedConnections = isResponse;
 	}
 	
 	private void report(EventSeverity severity, String eventName, String code, String message, Exception e) {
@@ -271,20 +283,28 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					contentLength = MimeUtils.getContentLength(headers);
 					if (contentLength == null) {
 						String transferEncoding = MimeUtils.getTransferEncoding(headers);
+						Header connection = MimeUtils.getHeader("Connection", headers);
+						
+						if ("chunked".equals(transferEncoding)) {
+							chunked = new ChunkedReadableByteContainer(initialBuffer);
+							chunked.setMaxChunkSize(maxChunkSize);
+						}
+						// if we allow no message size for closed connections, we need to double check that the connection will be closed
+						else if (allowNoMessageSizeForClosedConnections && connection != null && connection.getValue() != null && connection.getValue().equalsIgnoreCase("close")) {
+							isUnlimitedResponse = true;
+						}
 						// if no content length or encoding, we don't have an (allowed) content, check if this is ok for the method
-						if (transferEncoding == null && allowWithoutContent(method)) {
+						else if (transferEncoding == null && allowWithoutContent(method)) {
 							isDone = true;
 							part = new PlainMimeEmptyPart(null, headers);
 							content.pushback(initialBuffer);
 							break parse;
 						}
-						else if (!"chunked".equals(transferEncoding)) {
+						else {
 							report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null);
 							// throw the exception code for length required
 							throw new HTTPException(411, "No content-length provided and not using chunked");
 						}
-						chunked = new ChunkedReadableByteContainer(initialBuffer);
-						chunked.setMaxChunkSize(maxChunkSize);
 					}
 					else if (contentLength == 0) {
 						isDone = true;
@@ -315,11 +335,12 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 				// if however you send it as one tcp packet and there is more data, the loop breaks due to bad design at line 231 (should use local var) and 255 (don't write the entire buffer but a limited version)
 				// this almost never occurs but if it does, the message never gets finished and the selection key will trigger indefinitely for the EOS to be read!! quick fix is the following if
 				// proper refactor needed at some point but it is complex code so needs proper testing
-				if (contentLength != null && initialBuffer.remainingData() > contentLength) {
+				// @2020-07-30: added an exception for messages without length or chunked but that are closed. if they are already closed at this point, we have read the entire message, pushback the data
+				if ((contentLength != null && initialBuffer.remainingData() > contentLength) || (isUnlimitedResponse && isClosed)) {
 					content.pushback(initialBuffer);
 				}
 				long read = 0;
-				while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && chunked != null ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
+				while (!isDone() && (initialBuffer.remainingData() > 0 || (read = content.read(ByteBufferFactory.getInstance().limit(initialBuffer, null, Math.min(COPY_SIZE, contentLength == null && (chunked != null || isUnlimitedResponse) ? Long.MAX_VALUE : contentLength - totalRead)))) > 0)) {
 					totalRead += initialBuffer.remainingData();
 					if (chunked != null) {
 						long chunkRead = IOUtils.copy(chunked, writable, copyBuffer);
@@ -352,7 +373,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 							throw new HTTPException(413, "The backing resource does not have enough space");
 						}
 						// we have reached the end
-						if (totalRead == contentLength) {
+						if ((contentLength != null && totalRead == contentLength) || (isUnlimitedResponse && (isClosed || read == -1))) {
 							if (logger.isDebugEnabled()) {
 								logger.debug("[INBOUND] " + (isResponse ? "Response" : "Request") + " (" + hashCode() + ") finished reading {} bytes", totalRead - initialBuffer.remainingData());
 							}
