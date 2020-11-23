@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 
 import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.ResponseHandler;
-import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.LinkableHTTPResponse;
@@ -20,13 +19,10 @@ import be.nabu.libs.http.client.nio.NIOHTTPClientImpl.HTTPResponseFuture;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.ExceptionFormatter;
-import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.SecurityContext;
 import be.nabu.libs.nio.api.SourceContext;
-import be.nabu.libs.nio.api.UpgradeableMessagePipeline;
 import be.nabu.libs.nio.impl.EventDrivenMessageProcessor;
 import be.nabu.utils.mime.api.Header;
-import be.nabu.utils.mime.impl.MimeUtils;
 
 public class HTTPResponseProcessor extends EventDrivenMessageProcessor<HTTPResponse, HTTPRequest> {
 

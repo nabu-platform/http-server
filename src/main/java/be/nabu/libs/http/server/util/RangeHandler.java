@@ -101,8 +101,19 @@ public class RangeHandler implements EventHandler<HTTPResponse, HTTPResponse> {
 						if (from != null && from < 0) {
 							throw new HTTPException(416, "Invalid range header, from can not be negative: " + rangeHeader.getValue());
 						}
+						// rfc7233 -> page 5
+						/*
+						   A client can limit the number of bytes requested without knowing the
+						   size of the selected representation.  If the last-byte-pos value is
+						   absent, or if the value is greater than or equal to the current
+						   length of the representation data, the byte range is interpreted as
+						   the remainder of the representation (i.e., the server replaces the
+						   value of last-byte-pos with a value that is one less than the current
+						   length of the selected representation).
+						 */
 						if (to != null && to >= contentLength) {
-							throw new HTTPException(416, "Invalid range header, to can not be larger than the entire content: " + rangeHeader.getValue());
+							to = contentLength - 1;
+//							throw new HTTPException(416, "Invalid range header, to can not be larger than the entire content: " + rangeHeader.getValue());
 						}
 						try {
 							Long newLength = contentLength;

@@ -47,6 +47,7 @@ import be.nabu.utils.io.containers.SynchronizedReadableContainer;
 import be.nabu.utils.io.containers.SynchronizedWritableContainer;
 import be.nabu.utils.io.containers.chars.ReadableStraightByteToCharContainer;
 import be.nabu.utils.mime.api.Header;
+import be.nabu.utils.mime.api.ModifiableContentPart;
 import be.nabu.utils.mime.api.ModifiablePart;
 import be.nabu.utils.mime.impl.MimeContentTransferTranscoder;
 import be.nabu.utils.mime.impl.MimeHeader;
@@ -362,6 +363,10 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
 							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
 							isDone = true;
+							// the resource "should" be backed and re-readable, we are not in streaming mode
+							if (part instanceof ModifiableContentPart) {
+								((ModifiableContentPart) part).setReopenable(true);
+							}
 						}
 						else {
 							totalChunkRead += chunkRead;
@@ -381,6 +386,10 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 							// whether or not we send the headers along to the parser depends on whether or not they are stored in the resource already
 							part = includeHeaders ? new MimeParser().parse((ReadableResource) resource) : new MimeParser().parse((ReadableResource) resource, headers);
 							isDone = true;
+							// the resource "should" be backed and re-readable, we are not in streaming mode
+							if (part instanceof ModifiableContentPart) {
+								((ModifiableContentPart) part).setReopenable(true);
+							}
 						}
 					}
 					// don't take anything into account that is not processed

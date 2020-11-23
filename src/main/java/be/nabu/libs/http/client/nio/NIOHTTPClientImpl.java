@@ -45,6 +45,7 @@ import be.nabu.libs.nio.api.events.ConnectionEvent;
 import be.nabu.libs.nio.api.events.ConnectionEvent.ConnectionState;
 import be.nabu.libs.nio.impl.MessagePipelineImpl;
 import be.nabu.libs.nio.impl.NIOClientImpl;
+import be.nabu.utils.mime.api.ModifiableContentPart;
 import be.nabu.utils.mime.impl.FormatException;
 
 public class NIOHTTPClientImpl implements NIOHTTPClient {
@@ -135,7 +136,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	@SuppressWarnings("unchecked")
 	@Override
 	public Future<HTTPResponse> call(HTTPRequest originalRequest, boolean secure) throws IOException, FormatException, ParseException {
-		// allow interception of requests
+		// allow interception of requests, we don't know whether or not it is reopeneable, only the one who created the request knows
 		final HTTPRequest request = HTTPInterceptorManager.intercept(originalRequest);
 		
 		URI uri = HTTPUtils.getURI(request, secure);
@@ -289,6 +290,12 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 			if (this.response != null) {
 				throw new IllegalStateException("A response has already been set");
 			}
+			// we should be backing the response with proper reopenable resources
+			if (response.getContent() instanceof ModifiableContentPart) {
+				((ModifiableContentPart) response.getContent()).setReopenable(true);
+			}
+			response = HTTPInterceptorManager.intercept(response);
+			
 			this.response = response;
 			if (subscription != null) {
 				subscription.unsubscribe();
@@ -450,10 +457,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		// there is no real use in doing the intercept in the call() as it uses different threads to perform the actual execution
 		Future<HTTPResponse> call = call(request, secure);
 		try {
-			HTTPResponse response = requestTimeout <= 0 ? call.get() : call.get(requestTimeout, TimeUnit.MILLISECONDS);
-			// allow intercept of response
-			response = HTTPInterceptorManager.intercept(response);
-			return response;
+			return requestTimeout <= 0 ? call.get() : call.get(requestTimeout, TimeUnit.MILLISECONDS);
 		}
 		catch (Exception e) {
 			// if the request failed for whatever reason (timeout for example), close the pipeline

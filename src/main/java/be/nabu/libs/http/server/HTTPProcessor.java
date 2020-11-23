@@ -150,6 +150,9 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				else {
 					event.setSeverity(EventSeverity.WARNING);
 				}
+				if (event.getCode() == null) {
+					event.setCode("HTTP-" + response.getCode());
+				}
 			}
 			eventTarget.fire(event, this);
 		}
