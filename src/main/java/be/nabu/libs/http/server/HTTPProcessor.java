@@ -1,9 +1,11 @@
 package be.nabu.libs.http.server;
 
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +41,9 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 	private boolean isProxied;
 	private HeaderMappingProvider mapping;
 	private EventTarget eventTarget;
+	
+	// if enabled, we make sure a correlation id header is available so it can be accessed statically everywhere the http request passes
+	private boolean ensureCorrelationId = true;
 
 	public HTTPProcessor(EventDispatcher dispatcher, ExceptionFormatter<HTTPRequest, HTTPResponse> exceptionFormatter, boolean isProxied, HeaderMappingProvider mapping, EventTarget eventTarget) {
 		super(HTTPRequest.class, HTTPResponse.class, dispatcher, exceptionFormatter, true);
@@ -86,6 +91,36 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				throw new HTTPException(400, "Missing host header");
 			}
 		}
+		
+		// it was getting tiresome to have to resolve the proxied host everywhere
+		// and then we got to places that don't know anything about http and can't even resolve it
+		// so instead, I opted to do the resolving here and update the pipeline so the reporting is correct
+		// it is _very_ rarely interesting to see proxy stuff here
+		if (isProxied) {
+			String address = HTTPUtils.getRemoteAddress(true, request.getContent().getHeaders());
+			if (address != null) {
+				SocketAddress currentAddress = sourceContext.getSocketAddress();
+				if (!(currentAddress instanceof InetSocketAddress) || !address.equals(((InetSocketAddress) currentAddress).getHostString())) {
+					Integer port = HTTPUtils.getRemotePort(true, request.getContent().getHeaders());
+
+					// if we are being proxied, get the "actual" data
+					Pipeline pipeline = PipelineUtils.getPipeline();
+					pipeline.setRemoteAddress(new InetSocketAddress(address, port == null ? 1 : port));
+					
+					// we update the source context, because it will now reflect the remote address, we want the below code to work properly as well
+					sourceContext = pipeline.getSourceContext();
+				}
+			}
+		}
+		
+		// if we want to ensure the correlation id, we inject one if necessary
+		if (ensureCorrelationId && request.getContent() != null) {
+			Header header = MimeUtils.getHeader("X-Correlation-Id", request.getContent().getHeaders());
+			if (header == null) {
+				request.getContent().setHeader(new MimeHeader("X-Correlation-Id", UUID.randomUUID().toString().replace("-", "")));
+			}
+		}
+		
 		HTTPComplexEventImpl event = null;
 		if (eventTarget != null) {
 			event = new HTTPComplexEventImpl();

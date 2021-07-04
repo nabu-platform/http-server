@@ -18,6 +18,7 @@ import be.nabu.utils.io.api.EventfulSubscriber;
 import be.nabu.utils.io.api.EventfulSubscription;
 import be.nabu.utils.io.api.ReadableContainer;
 import be.nabu.utils.io.containers.ReadableContainerChainer;
+import be.nabu.utils.mime.impl.HeaderEncoding;
 import be.nabu.utils.mime.impl.PullableMimeFormatter;
 
 public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
@@ -56,6 +57,8 @@ public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 		formatter.setOptimizeCompression(true);
 		formatter.setIncludeMainContentTrailingLineFeeds(false);
 		formatter.setAllowBinary(true);
+		// chrome does not support the default encoding in for example the content-disposition header if the filename contains weird stuff
+		formatter.setHeaderEncoding(HeaderEncoding.RFC2231);
 		try {
 			formatter.format(message.getContent());
 		}

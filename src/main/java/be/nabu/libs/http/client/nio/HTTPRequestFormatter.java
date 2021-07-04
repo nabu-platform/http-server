@@ -14,6 +14,7 @@ import be.nabu.libs.resources.URIUtils;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.mime.impl.HeaderEncoding;
 import be.nabu.utils.mime.impl.PullableMimeFormatter;
 
 public class HTTPRequestFormatter implements MessageFormatter<HTTPRequest> {
@@ -46,6 +47,7 @@ public class HTTPRequestFormatter implements MessageFormatter<HTTPRequest> {
 		formatter.setOptimizeCompression(true);
 		formatter.setIncludeMainContentTrailingLineFeeds(false);
 		formatter.setAllowBinary(true);
+		formatter.setHeaderEncoding(HeaderEncoding.RFC2231);
 		try {
 			formatter.format(message.getContent());
 		}

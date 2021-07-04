@@ -29,6 +29,7 @@ import be.nabu.libs.events.api.EventDispatcher;
 import be.nabu.libs.events.api.EventHandler;
 import be.nabu.libs.events.api.EventSubscription;
 import be.nabu.libs.http.HTTPInterceptorManager;
+import be.nabu.libs.http.api.HTTPInterceptor;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
 import be.nabu.libs.http.api.client.NIOHTTPClient;
@@ -62,6 +63,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	// amount of retries to do if a request failed
 	// failure in this case means we get an actual connection error (e.g. timeout etc) not a 500
 	private int amountOfRetries = 0;
+	private HTTPInterceptor interceptor;
 	
 	private Map<String, Boolean> secure = Collections.synchronizedMap(new HashMap<String, Boolean>());
 	private EventDispatcher dispatcher;
@@ -138,6 +140,11 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	public Future<HTTPResponse> call(HTTPRequest originalRequest, boolean secure) throws IOException, FormatException, ParseException {
 		// allow interception of requests, we don't know whether or not it is reopeneable, only the one who created the request knows
 		final HTTPRequest request = HTTPInterceptorManager.intercept(originalRequest);
+		
+		// allow interception here as well, no rewriting atm?
+		if (interceptor != null) {
+			interceptor.intercept(request);
+		}
 		
 		URI uri = HTTPUtils.getURI(request, secure);
 		int port = uri.getPort();
@@ -295,6 +302,9 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				((ModifiableContentPart) response.getContent()).setReopenable(true);
 			}
 			response = HTTPInterceptorManager.intercept(response);
+			if (interceptor != null) {
+				interceptor.intercept(response);
+			}
 			
 			this.response = response;
 			if (subscription != null) {
@@ -507,6 +517,14 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	@Deprecated
 	public void setAmountOfRetries(int amountOfRetries) {
 		this.amountOfRetries = amountOfRetries;
+	}
+
+	public HTTPInterceptor getInterceptor() {
+		return interceptor;
+	}
+
+	public void setInterceptor(HTTPInterceptor interceptor) {
+		this.interceptor = interceptor;
 	}
 	
 }
