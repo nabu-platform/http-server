@@ -192,7 +192,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				}
 			}
 			else {
-				event.setSeverity(EventSeverity.CRITICAL);
+				event.setSeverity(EventSeverity.ERROR);
 				event.setCode("MISSING-RESPONSE");
 			}
 			eventTarget.fire(event, this);
