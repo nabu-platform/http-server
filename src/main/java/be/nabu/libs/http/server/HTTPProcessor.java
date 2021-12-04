@@ -126,6 +126,8 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			event = new HTTPComplexEventImpl();
 			Pipeline pipeline = PipelineUtils.getPipeline();
 			CEPUtils.enrich(event, getClass(), "http-request", pipeline.getSourceContext().getSocketAddress(), null, null);
+			// all http traffic is captured in this particular category
+			event.setEventCategory("http-message");
 			// set the correct source ip & host
 			event.setSourceIp(HTTPUtils.getRemoteAddress(isProxied, request.getContent().getHeaders()));
 			event.setSourceHost(HTTPUtils.getRemoteHost(isProxied, request.getContent().getHeaders()));
@@ -176,11 +178,11 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				event.setSizeOut(MimeUtils.getContentLength(response.getContent().getHeaders()));
 				event.setResponseCode(response.getCode());
 				if (response.getCode() < 400) {
-					event.setSeverity(EventSeverity.DEBUG);
+					event.setSeverity(EventSeverity.INFO);
 				}
 				// in general this is "expected", a 403 is fishy though
 				else if (response.getCode() == 401) {
-					event.setSeverity(EventSeverity.DEBUG);
+					event.setSeverity(EventSeverity.INFO);
 				}
 				else {
 					event.setSeverity(EventSeverity.WARNING);
@@ -188,6 +190,10 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				if (event.getCode() == null) {
 					event.setCode("HTTP-" + response.getCode());
 				}
+			}
+			else {
+				event.setSeverity(EventSeverity.CRITICAL);
+				event.setCode("MISSING-RESPONSE");
 			}
 			eventTarget.fire(event, this);
 		}
