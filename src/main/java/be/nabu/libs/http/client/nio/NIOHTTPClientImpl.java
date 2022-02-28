@@ -107,6 +107,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				}
 			}
 		});
+		thread.setName("http-client-selector");
 		thread.setDaemon(true);
 		thread.start();
 		Date date = new Date();
@@ -526,5 +527,10 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 	public void setInterceptor(HTTPInterceptor interceptor) {
 		this.interceptor = interceptor;
 	}
-	
+
+	public void setName(String name) {
+		if (thread != null) {
+			thread.setName(name);
+		}
+	}
 }

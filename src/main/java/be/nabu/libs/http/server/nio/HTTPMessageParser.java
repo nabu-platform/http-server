@@ -23,6 +23,7 @@ import be.nabu.libs.http.core.ServerHeader;
 import be.nabu.libs.nio.PipelineUtils;
 import be.nabu.libs.nio.api.Pipeline;
 import be.nabu.libs.nio.api.StreamingMessageParser;
+import be.nabu.libs.nio.impl.MessagePipelineImpl;
 import be.nabu.libs.resources.api.LocatableResource;
 import be.nabu.libs.resources.api.ReadableResource;
 import be.nabu.libs.resources.api.Resource;
@@ -140,7 +141,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 		allowNoMessageSizeForClosedConnections = isResponse;
 	}
 	
-	private void report(EventSeverity severity, String eventName, String code, String message, Exception e) {
+	private void report(EventSeverity severity, String eventName, String code, String message, Exception e, String reason) {
 		if (eventTarget != null) {
 			try {
 				Pipeline pipeline = PipelineUtils.getPipeline();
@@ -148,6 +149,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 				event.setCode(code);
 				event.setSeverity(severity);
 				event.setApplicationProtocol("HTTP");
+				event.setReason(reason);
 				eventTarget.fire(event, this);
 			}
 			catch (Exception f) {
@@ -170,7 +172,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 			if (!delimit.isDelimiterFound()) {
 				// if we have reached the maximum size for the request and not found one, throw an exception
 				if (request.length() >= maxInitialLineLength) {
-					report(EventSeverity.WARNING, "http-parse", "NO-FIRST-LINE", "Could not find initial line in first " + maxInitialLineLength + " bytes", null);
+					report(EventSeverity.WARNING, "http-parse", "NO-FIRST-LINE", "Could not find initial line in first " + maxInitialLineLength + " bytes", null, "Received: " + request);
 					throw new HTTPException(414);
 				}
 				request = null;
@@ -181,19 +183,19 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					request = request.substring(0, request.length() - 1);
 				}
 				if (request.contains("%00")) {
-					report(EventSeverity.WARNING, "http-parse", "NUL", "Request/response line contains encoded NUL character", null);
+					report(EventSeverity.WARNING, "http-parse", "NUL", "Request/response line contains encoded NUL character", null, "Received: " + request);
 					throw new ParseException("Request line contains encoded NUL character, this is not allowed", 0);
 				}
 				initialBuffer.remark();
 				if (isResponse) {
 					if (!request.startsWith("HTTP/")) {
-						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null);
+						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null, "Received: " + request);
 						throw new ParseException("Could not parse response line: " + request, 0);
 					}
 					int firstSpaceIndex = request.indexOf(' ');
 					int secondSpaceIndex = request.indexOf(' ', firstSpaceIndex + 1);
 					if (firstSpaceIndex < 0) {
-						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null);
+						report(EventSeverity.WARNING, "http-parse", "RESPONSE-LINE", "Could not parse response line: " + request, null, "Received: " + request);
 						throw new ParseException("Could not parse response line: " + request, 0);
 					}
 					version = new Double(request.substring(0, firstSpaceIndex).replaceFirst("HTTP/", "").trim());
@@ -211,7 +213,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					int httpIndex = request.lastIndexOf("HTTP/");
 					
 					if (firstSpaceIndex < 0 || httpIndex < 0) {
-						report(EventSeverity.WARNING, "http-parse", "REQUEST-LINE", "Could not parse request line: " + request, null);
+						report(EventSeverity.WARNING, "http-parse", "REQUEST-LINE", "Could not parse request line: " + request, null, "Received: " + request);
 						throw new ParseException("Could not parse request line: " + request, 0);
 					}
 					method = request.substring(0, firstSpaceIndex);
@@ -244,7 +246,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					part = new PlainMimeEmptyPart(null);
 				}
 				else {
-					report(EventSeverity.WARNING, "http-parse", "NO-HEADERS", "No headers found for method: " + method, null);
+					report(EventSeverity.WARNING, "http-parse", "NO-HEADERS", "No headers found for method: " + method, null, null);
 					throw new ParseException("No headers found for the method '" + method + "'", 3);
 				}
 			}
@@ -261,13 +263,13 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					// we set the error offset to 1 for that particular error to be able to recognize it
 					// other parse exceptions should bubble up
 					if (e.getErrorOffset() != 1) {
-						report(EventSeverity.WARNING, "http-parse", "INCORRECT-HEADERS", "Could not parse the headers", e);
+						report(EventSeverity.WARNING, "http-parse", "INCORRECT-HEADERS", "Could not parse the headers", e, null);
 						throw e;
 					}
 				}
 				// if we did not find the headers in the allotted space, throw an exception
 				if (headers == null && limitedBuffer.remainingSpace() == 0) {
-					report(EventSeverity.WARNING, "http-parse", "LONG-HEADERS", "No headers found within the size limit of " + maxHeaderSize + " bytes", null);
+					report(EventSeverity.WARNING, "http-parse", "LONG-HEADERS", "No headers found within the size limit of " + maxHeaderSize + " bytes", null, null);
 					throw new HTTPException(431, "No headers found within the size limit: " + maxHeaderSize + " bytes");
 				}
 				else if (headers != null) {
@@ -302,7 +304,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 							break parse;
 						}
 						else {
-							report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null);
+							report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null, null);
 							// throw the exception code for length required
 							throw new HTTPException(411, "No content-length provided and not using chunked");
 						}
@@ -315,7 +317,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					}
 					resource = getDataProvider().newResource(method, target, version, headers);
 					if (resource == null) {
-						report(EventSeverity.WARNING, "http-parse", "NO-DATA-PROVIDER", "No data provider available for: " + request + ", headers: " + Arrays.asList(headers), null);
+						report(EventSeverity.WARNING, "http-parse", "NO-DATA-PROVIDER", "No data provider available for: " + request + ", headers: " + Arrays.asList(headers), null, null);
 						throw new ParseException("No data provider available for '" + request + "', headers: " + Arrays.asList(headers), 2);
 					}
 				}
@@ -374,7 +376,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 					}
 					else {
 						if (initialBuffer.remainingData() != writable.write(initialBuffer)) {
-							report(EventSeverity.WARNING, "http-parse", "TOO-BIG", "The backing resource does not have enough space for: " + contentLength, null);
+							report(EventSeverity.WARNING, "http-parse", "TOO-BIG", "The backing resource does not have enough space for: " + contentLength, null, null);
 							throw new HTTPException(413, "The backing resource does not have enough space");
 						}
 						// we have reached the end
@@ -439,7 +441,7 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 						break parse;
 					}
 					else if (!"chunked".equals(transferEncoding)) {
-						report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null);
+						report(EventSeverity.WARNING, "http-parse", "NO-CONTENT-LENGTH", "No content-length provided and not using chunked", null, null);
 						// throw the exception code for length required
 						throw new HTTPException(411, "No content-length provided and not using chunked");
 					}
@@ -498,6 +500,9 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 //						}
 						// if the streaming is not done and we have some room left, we want more information
 						if (streamingBuffer.remainingSpace() > COPY_SIZE * 5 && !streamingDone) {
+							if (pipeline instanceof MessagePipelineImpl) {
+								((MessagePipelineImpl<?, ?>) pipeline).registerReadInterest();
+							}
 							pipeline.read();
 						}
 					}
