@@ -24,7 +24,7 @@ import be.nabu.utils.mime.impl.PullableMimeFormatter;
 public class HTTPResponseFormatter implements MessageFormatter<HTTPResponse> {
 	
 	private Logger logger = LoggerFactory.getLogger(getClass());
-	public static boolean STREAMING_MODE = Boolean.parseBoolean(System.getProperty("http.streamingMode", "false"));
+	public static boolean STREAMING_MODE = Boolean.parseBoolean(System.getProperty("http.streamingMode", "true"));
 	
 	@SuppressWarnings({ "unchecked", "resource" })
 	@Override
