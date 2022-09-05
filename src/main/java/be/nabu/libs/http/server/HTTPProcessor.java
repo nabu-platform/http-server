@@ -92,6 +92,25 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			}
 		}
 		
+		if (request.getContent() != null) {
+			// remove any existing security header
+			request.getContent().removeHeader(ServerHeader.REQUEST_SECURITY.name());
+			// add a new one
+			request.getContent().setHeader(new SimpleSecurityHeader(securityContext.getSSLContext(), securityContext.getPeerCertificates()));
+			cleanRequestHeaders(request.getContent(), mapping);
+			// if not proxied, inject the remote data
+			if (!isProxied) {
+				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocketAddress());
+				if (remoteSocketAddress != null) {
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
+					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(remoteSocketAddress.getPort()).toString());
+				}
+				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getLocalPort()).toString());
+			}
+		}
+		
 		// it was getting tiresome to have to resolve the proxied host everywhere
 		// and then we got to places that don't know anything about http and can't even resolve it
 		// so instead, I opted to do the resolving here and update the pipeline so the reporting is correct
@@ -145,24 +164,6 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				event.setUserAgent(MimeUtils.getFullHeaderValue(header));
 			}
 		}
-		if (request.getContent() != null) {
-			// remove any existing security header
-			request.getContent().removeHeader(ServerHeader.REQUEST_SECURITY.name());
-			// add a new one
-			request.getContent().setHeader(new SimpleSecurityHeader(securityContext.getSSLContext(), securityContext.getPeerCertificates()));
-			cleanRequestHeaders(request.getContent(), mapping);
-			// if not proxied, inject the remote data
-			if (!isProxied) {
-				InetSocketAddress remoteSocketAddress = ((InetSocketAddress) sourceContext.getSocketAddress());
-				if (remoteSocketAddress != null) {
-					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_IS_LOCAL, Boolean.toString(remoteSocketAddress.getAddress().isLoopbackAddress() || remoteSocketAddress.getAddress().isLinkLocalAddress()));
-					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_ADDRESS, remoteSocketAddress.getAddress().getHostAddress());
-					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_HOST, remoteSocketAddress.getHostName());
-					HTTPUtils.setHeader(request.getContent(), ServerHeader.REMOTE_PORT, new Integer(remoteSocketAddress.getPort()).toString());
-				}
-				HTTPUtils.setHeader(request.getContent(), ServerHeader.LOCAL_PORT, new Integer(sourceContext.getLocalPort()).toString());
-			}
-		}
 		HTTPResponse response = super.process(securityContext, sourceContext, request);
 		
 		// make sure any requested connection closing is also enforced in the server
@@ -178,7 +179,13 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				event.setSizeOut(MimeUtils.getContentLength(response.getContent().getHeaders()));
 				event.setResponseCode(response.getCode());
 				if (response.getCode() < 400) {
-					event.setSeverity(EventSeverity.INFO);
+					// hardcoded exception for heartbeats, otherwise they generate way too many events
+					if (event.getRequestUri() != null && event.getRequestUri().getPath().equals("/heartbeat")) {
+						event.setSeverity(EventSeverity.DEBUG);
+					}
+					else {
+						event.setSeverity(EventSeverity.INFO);
+					}
 				}
 				// in general this is "expected", a 403 is fishy though
 				else if (response.getCode() == 401) {

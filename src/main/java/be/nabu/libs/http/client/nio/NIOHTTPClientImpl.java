@@ -442,6 +442,32 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		return getHost(uri).equals(host) && getPort(uri) == port;
 	}
 
+	public Future<HTTPResponse> call(HTTPRequest request, Principal principal, boolean secure, boolean followRedirects) throws IOException, FormatException, ParseException {
+		URI uri = HTTPUtils.getURI(request, secure);
+		String host = getHost(uri);
+		int port = getPort(uri);
+		setSecure(host, port, secure);
+		// if we want to redirect, set a handler
+		EventSubscription<HTTPResponse, HTTPRequest> redirectSubscription = null;
+		if (followRedirects) {
+			redirectSubscription = getDispatcher().subscribe(HTTPResponse.class, new RedirectFollower(this, 50));
+//			redirectSubscription.filter(new HandlerFilter(host, port));
+			// this works splendidly as long as the request itself is rewritten, not a new request is made
+			// at that point we would need linkable requests or something
+			// the alternative is the filter we used above but that can be too broad
+			redirectSubscription.filter(new RequestFilter(request));
+		}
+		// if we have a principal, set a handler
+		EventSubscription<HTTPResponse, HTTPRequest> authenticateSubscription = null;
+		if (principal != null) {
+			authenticateSubscription = getDispatcher().subscribe(HTTPResponse.class, new ServerAuthenticator(principal, new SPIAuthenticationHandler()));
+//			authenticateSubscription.filter(new HandlerFilter(host, port));
+			authenticateSubscription.filter(new RequestFilter(request));
+		}
+		// there is no real use in doing the intercept in the call() as it uses different threads to perform the actual execution
+		return call(request, secure);
+	}
+	
 	@Override
 	public HTTPResponse execute(HTTPRequest request, Principal principal, boolean secure, boolean followRedirects) throws IOException, FormatException, ParseException {
 		URI uri = HTTPUtils.getURI(request, secure);
