@@ -49,6 +49,14 @@ import be.nabu.libs.nio.impl.NIOClientImpl;
 import be.nabu.utils.mime.api.ModifiableContentPart;
 import be.nabu.utils.mime.impl.FormatException;
 
+/**
+ * TODO
+ * 
+ * It seems redirecting from http to https on the same host is not handled correctly
+ * In HTTPResponseProcessor it seems that we send back the request to be tried on the same message pipeline, which is obviously insecure
+ * Currently not important enough to fix but should be fixed at some point
+ *
+ */
 public class NIOHTTPClientImpl implements NIOHTTPClient {
 
 	private NIOClientImpl client;
