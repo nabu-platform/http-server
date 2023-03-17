@@ -14,6 +14,8 @@ import be.nabu.libs.resources.URIUtils;
 import be.nabu.utils.io.IOUtils;
 import be.nabu.utils.io.api.ByteBuffer;
 import be.nabu.utils.io.api.ReadableContainer;
+import be.nabu.utils.io.api.WritableContainer;
+import be.nabu.utils.io.containers.ReadableContainerDuplicator;
 import be.nabu.utils.mime.impl.HeaderEncoding;
 import be.nabu.utils.mime.impl.PullableMimeFormatter;
 
@@ -21,6 +23,8 @@ public class HTTPRequestFormatter implements MessageFormatter<HTTPRequest> {
 	
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	private Deque<HTTPRequest> queue;
+	
+	private static Boolean DUMPING = Boolean.parseBoolean(System.getProperty("http.dump.requests", "false"));
 	
 	public HTTPRequestFormatter(Deque<HTTPRequest> queue) {
 		this.queue = queue;
@@ -63,6 +67,27 @@ public class HTTPRequestFormatter implements MessageFormatter<HTTPRequest> {
 		synchronized(queue) {
 			queue.offer(message);
 		}
-		return IOUtils.chain(true, IOUtils.wrap(firstLine, true), formatter);
+		if (DUMPING) {
+			ReadableContainer<ByteBuffer> chain = IOUtils.chain(true, IOUtils.wrap(firstLine, true), formatter);
+			return new ReadableContainerDuplicator<ByteBuffer>(chain, new WritableContainer<ByteBuffer>() {
+				@Override
+				public void close() throws IOException {
+					
+				}
+				@Override
+				public long write(ByteBuffer buffer) throws IOException {
+					byte[] bytes = IOUtils.toBytes(buffer);
+					System.out.print(new String(bytes));
+					return bytes.length;
+				}
+				@Override
+				public void flush() throws IOException {
+					
+				}
+			});
+		}
+		else {
+			return IOUtils.chain(true, IOUtils.wrap(firstLine, true), formatter);
+		}
 	}
 }
