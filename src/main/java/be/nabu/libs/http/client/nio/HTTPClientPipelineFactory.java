@@ -32,6 +32,7 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 	private Map<HTTPRequest, HTTPResponseFuture> futures;
 	private NIOHTTPClientImpl client;
 	private boolean streamingMode;
+	private Integer maxChunkSize;
 
 	public HTTPClientPipelineFactory(NIOHTTPClientImpl client, CookieHandler cookieHandler, Map<HTTPRequest, HTTPResponseFuture> futures, EventDispatcher dispatcher, MessageDataProvider messageDataProvider, boolean streamingMode) {
 		this.client = client;
@@ -54,10 +55,12 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 			secure = server.getSSLContext() != null;
 		}
 		HTTPClientExceptionFormatter exceptionFormatter = new HTTPClientExceptionFormatter();
+		HTTPResponseParserFactory responseParserFactory = new HTTPResponseParserFactory(messageDataProvider, queue, server, streamingMode);
+		responseParserFactory.setMaxChunkSize(maxChunkSize);
 		MessagePipelineImpl<HTTPResponse, HTTPRequest> pipeline = new MessagePipelineImpl<HTTPResponse, HTTPRequest>(
 			server,
 			key,
-			new HTTPResponseParserFactory(messageDataProvider, queue, server, streamingMode),
+			responseParserFactory,
 			new HTTPRequestFormatterFactory(queue),
 			new HTTPResponseProcessorFactory(client, cookieHandler, secure, dispatcher, exceptionFormatter, futures),
 			new KeepAliveDecider<HTTPRequest>() {
@@ -91,4 +94,11 @@ public class HTTPClientPipelineFactory implements PipelineFactory {
 		return pending.get(pipeline);
 	}
 
+	public Integer getMaxChunkSize() {
+		return maxChunkSize;
+	}
+
+	public void setMaxChunkSize(Integer maxChunkSize) {
+		this.maxChunkSize = maxChunkSize;
+	}
 }

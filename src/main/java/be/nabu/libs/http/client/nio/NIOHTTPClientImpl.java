@@ -48,6 +48,7 @@ import be.nabu.libs.nio.impl.MessagePipelineImpl;
 import be.nabu.libs.nio.impl.NIOClientImpl;
 import be.nabu.utils.mime.api.ModifiableContentPart;
 import be.nabu.utils.mime.impl.FormatException;
+import be.nabu.utils.mime.impl.MimeUtils;
 
 /**
  * TODO
@@ -307,9 +308,7 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 				throw new IllegalStateException("A response has already been set");
 			}
 			// we should be backing the response with proper reopenable resources
-			if (response.getContent() instanceof ModifiableContentPart) {
-				((ModifiableContentPart) response.getContent()).setReopenable(true);
-			}
+			MimeUtils.setReopenable(response.getContent(), true);
 			response = HTTPInterceptorManager.intercept(response);
 			if (interceptor != null) {
 				interceptor.intercept(response);
@@ -566,5 +565,13 @@ public class NIOHTTPClientImpl implements NIOHTTPClient {
 		if (thread != null) {
 			thread.setName(name);
 		}
+	}
+	
+	public Integer getMaxChunkSize() {
+		return pipelineFactory.getMaxChunkSize();
+	}
+
+	public void setMaxChunkSize(Integer maxChunkSize) {
+		pipelineFactory.setMaxChunkSize(maxChunkSize);
 	}
 }
