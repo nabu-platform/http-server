@@ -86,7 +86,6 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				}
 			}
 		}
-		
 		// remove all the headers that are not allowed
 		for (ServerHeader header : ServerHeader.values()) {
 			if (!header.isUserValueAllowed()) {
@@ -98,6 +97,26 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 			for (Header original : entry.getValue()) {
 				part.setHeader(new MimeHeader(entry.getKey(), original.getValue(), original.getComments()));
 			}
+		}
+		// calculate the conversation id
+		boolean hasConversationId = false;
+		if (mapping != null && mapping.getConversationIdMapping() != null) {
+			String[] split = mapping.getConversationIdMapping().split("[\\s]*:[\\s]*");
+			Header header = MimeUtils.getHeader(split[0], part.getHeaders());
+			if (header != null && header.getValue() != null && !header.getValue().trim().isEmpty()) {
+				String value = MimeUtils.getFullHeaderValue(header);
+				if (split.length >= 2) {
+					value = value.replaceAll(split[1], "$1");
+				}
+				// remove any existing header, otherwise it will get picked up before the other one!
+				part.removeHeader(ServerHeader.NAME_CONVERSATION_ID);
+				part.setHeader(new MimeHeader(ServerHeader.NAME_CONVERSATION_ID, value));
+				hasConversationId = true;
+			}
+		}
+		// we currently want this to be explicitly opt in, so remove it if you didn't specifically choose for it
+		if (!hasConversationId) {
+			part.removeHeader(ServerHeader.NAME_CONVERSATION_ID);
 		}
 	}
 	
@@ -151,9 +170,15 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 		
 		// if we want to ensure the correlation id, we inject one if necessary
 		if (ensureCorrelationId && request.getContent() != null) {
-			Header header = MimeUtils.getHeader("X-Correlation-Id", request.getContent().getHeaders());
+			Header header = MimeUtils.getHeader(ServerHeader.NAME_CORRELATION_ID, request.getContent().getHeaders());
 			if (header == null) {
-				request.getContent().setHeader(new MimeHeader("X-Correlation-Id", UUID.randomUUID().toString().replace("-", "")));
+				// check if we have a conversation id
+				Header conversationIdHeader = MimeUtils.getHeader(ServerHeader.NAME_CONVERSATION_ID, request.getContent().getHeaders());
+				String correlationId = UUID.randomUUID().toString().replace("-", "");
+				if (conversationIdHeader != null && conversationIdHeader.getValue() != null && !conversationIdHeader.getValue().trim().isEmpty()) {
+					correlationId = conversationIdHeader.getValue().trim() + "-" + correlationId;
+				}
+				request.getContent().setHeader(new MimeHeader(ServerHeader.NAME_CORRELATION_ID, correlationId));
 			}
 		}
 		
