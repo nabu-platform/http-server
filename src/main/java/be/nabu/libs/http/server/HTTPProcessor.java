@@ -176,7 +176,7 @@ public class HTTPProcessor extends EventDrivenMessageProcessor<HTTPRequest, HTTP
 				Header conversationIdHeader = MimeUtils.getHeader(ServerHeader.NAME_CONVERSATION_ID, request.getContent().getHeaders());
 				String correlationId = UUID.randomUUID().toString().replace("-", "");
 				if (conversationIdHeader != null && conversationIdHeader.getValue() != null && !conversationIdHeader.getValue().trim().isEmpty()) {
-					correlationId = conversationIdHeader.getValue().trim() + "-" + correlationId;
+					correlationId = conversationIdHeader.getValue().trim() + ":" + correlationId;
 				}
 				request.getContent().setHeader(new MimeHeader(ServerHeader.NAME_CORRELATION_ID, correlationId));
 			}
