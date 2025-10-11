@@ -94,4 +94,10 @@ public class HTTPResponseParser implements StreamingMessageParser<HTTPResponse> 
 	public boolean isStreaming() {
 		return streamingMode;
 	}
+
+	@Override
+	public boolean shouldStopReading() {
+		return messageFramer.shouldStopReading();
+	}
+	
 }

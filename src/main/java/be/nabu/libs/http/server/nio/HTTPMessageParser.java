@@ -722,5 +722,11 @@ public class HTTPMessageParser implements StreamingMessageParser<ModifiablePart>
 	public boolean isStreaming() {
 		return streamingMode;
 	}
+
+	@Override
+	public boolean shouldStopReading() {
+		// on upgrade, stop reading
+		return code != null && code == 101 && (!streamingMode || streamingDone);
+	}
 	
 }
