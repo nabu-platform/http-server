@@ -32,6 +32,8 @@ import be.nabu.libs.http.HTTPCodes;
 import be.nabu.libs.http.HTTPException;
 import be.nabu.libs.http.api.HTTPRequest;
 import be.nabu.libs.http.api.HTTPResponse;
+import be.nabu.libs.http.api.LinkableHTTPResponse;
+import be.nabu.libs.http.core.DefaultHTTPRequest;
 import be.nabu.libs.http.core.DefaultHTTPResponse;
 import be.nabu.libs.http.core.HTTPUtils;
 import be.nabu.libs.resources.DynamicResource;
@@ -43,8 +45,10 @@ import be.nabu.libs.resources.api.Resource;
 import be.nabu.libs.resources.api.ResourceContainer;
 import be.nabu.libs.resources.api.TimestampedResource;
 import be.nabu.utils.mime.api.ContentPart;
+import be.nabu.utils.mime.api.Header;
 import be.nabu.utils.mime.impl.FormatException;
 import be.nabu.utils.mime.impl.MimeHeader;
+import be.nabu.utils.mime.impl.MimeUtils;
 import be.nabu.utils.mime.impl.PlainMimeEmptyPart;
 
 public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> {
@@ -55,6 +59,7 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	private Map<String, ReadableResource> cache = new HashMap<String, ReadableResource>();
 	private boolean allowEncoding;
 	private Map<ResourceContainer<?>, Set<String>> resources = new HashMap<ResourceContainer<?>, Set<String>>();
+	private String defaultResource = null;
 	
 	public ResourceHandler(ResourceContainer<?> root, String serverPath, boolean useCache) {
 		if (root != null) {
@@ -63,6 +68,23 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 		this.serverPath = serverPath;
 		this.useCache = useCache;
 		this.allowEncoding = useCache;
+	}
+	
+	public EventHandler<HTTPResponse, HTTPResponse> get404Rewriter() {
+		// if we are about to send back a 404 and you were not doin
+		return new EventHandler<HTTPResponse, HTTPResponse>() {
+			@Override
+			public HTTPResponse handle(HTTPResponse response) {
+				if (response.getCode() == 404 && response instanceof LinkableHTTPResponse && ((LinkableHTTPResponse) response).getRequest() != null && ((LinkableHTTPResponse) response).getRequest().getMethod().equalsIgnoreCase("get")) {
+					// check if the Accept contains html
+					Header header = MimeUtils.getHeader("Accept", ((LinkableHTTPResponse) response).getRequest().getContent().getHeaders());
+					if (header != null && header.getValue().contains("html")) {
+						return ResourceHandler.this.handle(new DefaultHTTPRequest("GET", "/", ((LinkableHTTPResponse) response).getRequest().getContent()));
+					}
+				}
+				return null;
+			}
+		};
 	}
 	
 	@Override
@@ -119,6 +141,12 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 	
 	public ReadableResource getResource(String path) throws IOException {
 		Resource resource;
+		if (path == null || path.isBlank()) {
+			path = defaultResource;
+		}
+		if (path == null) {
+			return null;
+		}
 		if (!cache.containsKey(path)) { 
 			resource = resolveResource(path);
 			if (resource == null) {
@@ -202,6 +230,14 @@ public class ResourceHandler implements EventHandler<HTTPRequest, HTTPResponse> 
 
 	public List<ResourceContainer<?>> getRoots() {
 		return roots;
+	}
+
+	public String getDefaultResource() {
+		return defaultResource;
+	}
+
+	public void setDefaultResource(String defaultResource) {
+		this.defaultResource = defaultResource;
 	}
 	
 }
