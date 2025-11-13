@@ -44,16 +44,18 @@ public class PathFilter implements EventHandler<HTTPRequest, Boolean> {
 	@Override
 	public Boolean handle(HTTPRequest request) {
 		try {
+			boolean result = false;
 			if (whitelist) {
-				return isRegex
+				result = isRegex
 					? !HTTPUtils.getURI(request, false).getPath().matches(path)
 					: !HTTPUtils.getURI(request, false).getPath().startsWith(path);
 			}
 			else {
-				return isRegex
+				result = isRegex
 					? HTTPUtils.getURI(request, false).getPath().matches(path)
 					: HTTPUtils.getURI(request, false).getPath().startsWith(path);
 			}
+			return result;
 		}
 		catch (FormatException e) {
 			return false;
